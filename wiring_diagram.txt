@@ -1,0 +1,30 @@
+SIMON SAYS WIRING DIAGRAM
+========================
+
+Power Supply (RS PRO LI60-20B24PR2)
+├── +24V ──────────────────── +24V Terminal Block
+│                               ├── Red Button Pin 1 (Brown)
+│                               ├── Blue Button Pin 1 (Brown)
+│                               └── Yellow Button Pin 1 (Brown)
+│
+└── 0V ───────────────────── 0V Terminal Block
+                                ├── Red Button Pin 3 (Blue)
+                                ├── Blue Button Pin 3 (Blue)
+                                └── Yellow Button Pin 3 (Blue)
+
+PLC Digital Inputs (NX-ID4442)
+├── DI1 ─────────────────── Yellow Button Pin 4 (Black)
+├── DI3 ─────────────────── Blue Button Pin 4 (Black)
+└── DI5 ─────────────────── Red Button Pin 4 (Black)
+
+PLC Digital Outputs (NX-OD4256)
+├── DO0 ─────────────────── Red Button Pin 2 (White)
+├── DO1 ─────────────────── Blue Button Pin 2 (White)
+└── DO2 ─────────────────── Yellow Button Pin 2 (White)
+
+BUTTON DETAILS (RAFI RAMO 22 T - M12, 4-pin)
+=============================================
+Pin 1 (Brown)  = Contact Common (+24V)
+Pin 2 (White)  = LED Positive (from PLC output)
+Pin 3 (Blue)   = LED Negative (to 0V)
+Pin 4 (Black)  = Contact Output (to PLC input)
