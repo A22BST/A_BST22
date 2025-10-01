@@ -1,0 +1,618 @@
+===============================================================================
+COMPLETE LADDER LOGIC RUNG-BY-RUNG IMPLEMENTATION
+Simon Says - Omron NX102-1100 - Sysmac Studio
+Phase 1: 3-Button Implementation
+===============================================================================
+
+This file contains detailed ladder logic for each rung.
+Implement these in Sysmac Studio's Ladder Editor (LD language).
+
+===============================================================================
+PROGRAM ORGANIZATION
+===============================================================================
+
+Program: PLC_PRG (Main Program)
+Language: Ladder Diagram (LD)
+
+Sections:
+  [000-009] Initialization & Startup
+  [010-019] Edge Detection
+  [020-029] IDLE State Logic
+  [030-049] PLAYBACK State Logic
+  [050-069] WAIT_INPUT State Logic
+  [070-079] GAME_OVER State Logic
+  [080-099] LED Output Control
+
+===============================================================================
+SECTION 0: INITIALIZATION & STARTUP (Rungs 000-009)
+===============================================================================
+
+---[ RUNG 000 ]----------------------------------------------------------------
+Purpose: Initialize random seed on first scan
+Logic: On first scan, seed the random number generator with a value
+
+     ┌────┐
+  ──┤FirstScan├─────────[MOV 12345 iRandomSeed]───
+     └────┘
+
+Instruction:
+- Use system flag for first scan (implementation varies by PLC)
+- Alternative: Use a startup flag that clears after first use
+
+---[ RUNG 001 ]----------------------------------------------------------------
+Purpose: Reset game state on first scan
+Logic: Ensure game starts in IDLE state
+
+     ┌────┐
+  ──┤FirstScan├─────────[MOV 0 iGameState]───
+     └────┘              [MOV 0 iSequenceLength]
+                         [MOV 0 iLevel]
+                         [RESET bGameActive]
+
+===============================================================================
+SECTION 1: EDGE DETECTION (Rungs 010-019)
+===============================================================================
+
+---[ RUNG 010 ]----------------------------------------------------------------
+Purpose: Detect rising edge on Yellow button (DI1)
+Logic: Compare current scan with previous scan
+
+  ──┤diButtonYellow├──┤/bButtonY_Last├──( bButtonY_Pressed )──
+
+Note: This creates a one-scan pulse when button transitions from OFF to ON
+
+---[ RUNG 011 ]----------------------------------------------------------------
+Purpose: Store Yellow button state for next scan
+
+  ──┤diButtonYellow├──( bButtonY_Last )──
+
+---[ RUNG 012 ]----------------------------------------------------------------
+Purpose: Detect rising edge on Blue button (DI3)
+
+  ──┤diButtonBlue├──┤/bButtonB_Last├──( bButtonB_Pressed )──
+
+---[ RUNG 013 ]----------------------------------------------------------------
+Purpose: Store Blue button state for next scan
+
+  ──┤diButtonBlue├──( bButtonB_Last )──
+
+---[ RUNG 014 ]----------------------------------------------------------------
+Purpose: Detect rising edge on Red button (DI5)
+
+  ──┤diButtonRed├──┤/bButtonR_Last├──( bButtonR_Pressed )──
+
+---[ RUNG 015 ]----------------------------------------------------------------
+Purpose: Store Red button state for next scan
+
+  ──┤diButtonRed├──( bButtonR_Last )──
+
+---[ RUNG 016 ]----------------------------------------------------------------
+Purpose: Detect rising edge on Start button (DI10)
+
+  ──┤diStartButton├──┤/bStart_Last├──( bStartPressed )──
+
+---[ RUNG 017 ]----------------------------------------------------------------
+Purpose: Store Start button state for next scan
+
+  ──┤diStartButton├──( bStart_Last )──
+
+---[ RUNG 018 ]----------------------------------------------------------------
+Purpose: Clear edge detection flags after use
+Logic: Edge flags only active for one scan
+
+  ──┤bButtonY_Pressed├──( )──  (* Normally auto-clears next scan *)
+
+Note: In IEC 61131-3, this behavior depends on implementation.
+Some systems auto-clear, others need explicit reset.
+
+===============================================================================
+SECTION 2: IDLE STATE LOGIC (Rungs 020-029)
+===============================================================================
+
+---[ RUNG 020 ]----------------------------------------------------------------
+Purpose: Wait for start button in IDLE state
+Logic: When start pressed and in IDLE, transition to PLAYBACK
+
+  ──┤iGameState = STATE_IDLE├──┤bStartPressed├──[MOV STATE_PLAYBACK iGameState]──
+                                                  [MOV 0 iSequenceLength]
+                                                  [MOV 1 iLevel]
+                                                  [MOV 0 iPlaybackIndex]
+                                                  [MOV 0 iInputIndex]
+                                                  ( bGameActive )
+
+---[ RUNG 021 ]----------------------------------------------------------------
+Purpose: Reset all LEDs in IDLE state
+Logic: Turn off all outputs when idle
+
+  ──┤iGameState = STATE_IDLE├──( /doLedYellow )──
+                               ( /doLedBlue )
+                               ( /doLedRed )
+
+Note: ( / ) means reset/turn off the coil
+
+---[ RUNG 022 ]----------------------------------------------------------------
+Purpose: Initialize random seed with more entropy (optional enhancement)
+Logic: Use system clock or timer to add randomness
+
+  ──┤iGameState = STATE_IDLE├──┤bStartPressed├──[COMPUTE]──
+                                                  iRandomSeed := iRandomSeed + DINT#(iLevel * 17)
+
+Note: This adds some variability based on timing
+
+===============================================================================
+SECTION 3: PLAYBACK STATE LOGIC (Rungs 030-049)
+===============================================================================
+
+---[ RUNG 030 ]----------------------------------------------------------------
+Purpose: Generate new sequence step at start of playback
+Logic: When entering PLAYBACK and index is 0, add one button to sequence
+
+  ──┤iGameState = STATE_PLAYBACK├──┤iPlaybackIndex = 0├──┤/bPlaybackActive├──[COMPUTE]──
+                                                                              ( bPlaybackActive )
+
+COMPUTE block contents:
+  iRandomSeed := (iRandomSeed * RNG_MULTIPLIER + RNG_INCREMENT) MOD RNG_MODULUS;
+  iCurrentButton := (iRandomSeed MOD NUM_BUTTONS) + 1;
+  aiSequence[iSequenceLength] := iCurrentButton;
+  iSequenceLength := iSequenceLength + 1;
+
+Note: This implements a Linear Congruential Generator (LCG)
+
+---[ RUNG 031 ]----------------------------------------------------------------
+Purpose: Load current sequence button for playback
+Logic: Get the button code from the sequence array
+
+  ──┤iGameState = STATE_PLAYBACK├──┤bPlaybackActive├──┤iPlaybackIndex < iSequenceLength├──
+    ┤/tFlashTimer.Q├──[MOV aiSequence[iPlaybackIndex] iCurrentButton]──
+
+---[ RUNG 032 ]----------------------------------------------------------------
+Purpose: Start flash timer when ready to show next button
+Logic: Begin the LED flash cycle
+
+  ──┤iGameState = STATE_PLAYBACK├──┤bPlaybackActive├──┤iPlaybackIndex < iSequenceLength├──
+    ┤/tFlashTimer.Q├──┤/tGapTimer.Q├──[TON tFlashTimer]──
+                                      ( bFlashOn )
+
+TON parameters:
+  IN := TRUE (condition met)
+  PT := tFlashTime (500ms)
+
+---[ RUNG 033 ]----------------------------------------------------------------
+Purpose: Hold flash on during timer
+Logic: Keep bFlashOn active while timer running
+
+  ──┤tFlashTimer.Q├──( bFlashOn )──
+
+---[ RUNG 034 ]----------------------------------------------------------------
+Purpose: End flash when timer done
+Logic: Reset flash flag and start gap timer
+
+  ──┤tFlashTimer.DN├──[RESET tFlashTimer]──
+                      [TON tGapTimer]
+                      ( /bFlashOn )
+
+TON parameters:
+  IN := TRUE
+  PT := tGapTime (200ms)
+
+---[ RUNG 035 ]----------------------------------------------------------------
+Purpose: Advance to next sequence position after gap
+Logic: Increment playback index
+
+  ──┤tGapTimer.DN├──[ADD iPlaybackIndex 1 iPlaybackIndex]──
+                    [RESET tGapTimer]
+
+---[ RUNG 036 ]----------------------------------------------------------------
+Purpose: Check if playback complete
+Logic: When all sequence shown, move to input state
+
+  ──┤iGameState = STATE_PLAYBACK├──┤iPlaybackIndex >= iSequenceLength├──
+    [MOV STATE_WAIT_INPUT iGameState]──
+    [MOV 0 iInputIndex]
+    [MOV 0 iPlayerInput]
+    ( /bPlaybackActive )
+    [TON tInputTimeout]
+
+TON parameters:
+  IN := TRUE
+  PT := tInputTimeoutVal (3000ms)
+
+===============================================================================
+SECTION 4: WAIT_INPUT STATE LOGIC (Rungs 050-069)
+===============================================================================
+
+---[ RUNG 050 ]----------------------------------------------------------------
+Purpose: Capture Yellow button press during input phase
+Logic: Set player input code when yellow pressed
+
+  ──┤iGameState = STATE_WAIT_INPUT├──┤bButtonY_Pressed├──┤iPlayerInput = 0├──
+    [MOV BTN_YELLOW iPlayerInput]──
+
+Note: iPlayerInput = 0 check prevents double-press in same scan
+
+---[ RUNG 051 ]----------------------------------------------------------------
+Purpose: Capture Blue button press during input phase
+
+  ──┤iGameState = STATE_WAIT_INPUT├──┤bButtonB_Pressed├──┤iPlayerInput = 0├──
+    [MOV BTN_BLUE iPlayerInput]──
+
+---[ RUNG 052 ]----------------------------------------------------------------
+Purpose: Capture Red button press during input phase
+
+  ──┤iGameState = STATE_WAIT_INPUT├──┤bButtonR_Pressed├──┤iPlayerInput = 0├──
+    [MOV BTN_RED iPlayerInput]──
+
+---[ RUNG 053 ]----------------------------------------------------------------
+Purpose: Validate player input - CORRECT path
+Logic: Check if input matches sequence
+
+  ──┤iGameState = STATE_WAIT_INPUT├──┤iPlayerInput > 0├──
+    ┤iPlayerInput = aiSequence[iInputIndex]├──[ADD iInputIndex 1 iInputIndex]──
+                                              [MOV 0 iPlayerInput]
+                                              [RESET tInputTimeout]
+                                              ( bCorrectInput )
+
+---[ RUNG 054 ]----------------------------------------------------------------
+Purpose: Restart input timeout after correct input
+Logic: Give player time for next button
+
+  ──┤bCorrectInput├──[TON tInputTimeout]──
+                     ( /bCorrectInput )
+
+TON parameters:
+  IN := TRUE
+  PT := tInputTimeoutVal (3000ms)
+
+---[ RUNG 055 ]----------------------------------------------------------------
+Purpose: Validate player input - WRONG path
+Logic: Input doesn't match sequence
+
+  ──┤iGameState = STATE_WAIT_INPUT├──┤iPlayerInput > 0├──
+    ┤iPlayerInput <> aiSequence[iInputIndex]├──[MOV STATE_GAME_OVER iGameState]──
+                                               [MOV 0 iPlayerInput]
+                                               ( bWrongInput )
+                                               ( /bGameActive )
+                                               [RESET tInputTimeout]
+
+---[ RUNG 056 ]----------------------------------------------------------------
+Purpose: Handle input timeout
+Logic: Player took too long to press button
+
+  ──┤iGameState = STATE_WAIT_INPUT├──┤tInputTimeout.DN├──
+    [MOV STATE_GAME_OVER iGameState]──
+    ( bTimeout )
+    ( /bGameActive )
+    [RESET tInputTimeout]
+
+---[ RUNG 057 ]----------------------------------------------------------------
+Purpose: Check if player completed sequence
+Logic: Input index reached sequence length
+
+  ──┤iGameState = STATE_WAIT_INPUT├──┤iInputIndex >= iSequenceLength├──
+    [MOV STATE_PLAYBACK iGameState]──
+    [MOV 0 iPlaybackIndex]
+    [ADD iLevel 1 iLevel]
+    ( bSequenceComplete )
+    ( /bPlaybackActive )
+
+---[ RUNG 058 ]----------------------------------------------------------------
+Purpose: Reset sequence complete flag
+Logic: Clear on next scan
+
+  ──┤bSequenceComplete├──( /bSequenceComplete )──
+
+Note: This rung runs after the transition, clearing the flag
+
+===============================================================================
+SECTION 5: GAME_OVER STATE LOGIC (Rungs 070-079)
+===============================================================================
+
+---[ RUNG 070 ]----------------------------------------------------------------
+Purpose: Start game over timer
+Logic: Display game over for set duration
+
+  ──┤iGameState = STATE_GAME_OVER├──[TON tGameOverTimer]──
+                                    ( bGameOver )
+
+TON parameters:
+  IN := TRUE
+  PT := tGameOverTime (3000ms)
+
+---[ RUNG 071 ]----------------------------------------------------------------
+Purpose: Return to IDLE after game over display
+Logic: Reset game state
+
+  ──┤tGameOverTimer.DN├──[MOV STATE_IDLE iGameState]──
+                         [MOV 0 iSequenceLength]
+                         [MOV 0 iLevel]
+                         [MOV 0 iPlaybackIndex]
+                         [MOV 0 iInputIndex]
+                         [RESET tGameOverTimer]
+                         ( /bGameOver )
+                         ( /bWrongInput )
+                         ( /bTimeout )
+
+---[ RUNG 072 ]----------------------------------------------------------------
+Purpose: Flash all LEDs during game over (oscillating pattern)
+Logic: Blink all LEDs together to indicate error
+
+  ──┤iGameState = STATE_GAME_OVER├──┤CLOCK_500ms├──( doLedYellow )──
+                                                     ( doLedBlue )
+                                                     ( doLedRed )
+
+Note: CLOCK_500ms is a system clock bit (500ms on/off cycle)
+Alternative: Use a timer-based oscillator if no system clock available
+
+---[ RUNG 073 ]----------------------------------------------------------------
+Purpose: Alternative oscillator using timer (if no system clock)
+Logic: Create 250ms on/off pattern
+
+(* Create oscillator flag *)
+VAR
+  tOscillator : TON;
+  bOscState : BOOL;
+END_VAR
+
+  ──┤iGameState = STATE_GAME_OVER├──┤/bOscState├──[TON tOscillator T#250ms]──
+
+  ──┤tOscillator.DN├──( bOscState )──
+                      [RESET tOscillator]
+
+  ──┤iGameState <> STATE_GAME_OVER├──( /bOscState )──
+                                     [RESET tOscillator]
+
+===============================================================================
+SECTION 6: LED OUTPUT CONTROL (Rungs 080-099)
+===============================================================================
+
+---[ RUNG 080 ]----------------------------------------------------------------
+Purpose: Yellow LED control during PLAYBACK
+Logic: Turn on Yellow LED when it's the current button
+
+  ──┤iGameState = STATE_PLAYBACK├──┤bFlashOn├──┤iCurrentButton = BTN_YELLOW├──
+    ( doLedYellow )──
+
+---[ RUNG 081 ]----------------------------------------------------------------
+Purpose: Blue LED control during PLAYBACK
+
+  ──┤iGameState = STATE_PLAYBACK├──┤bFlashOn├──┤iCurrentButton = BTN_BLUE├──
+    ( doLedBlue )──
+
+---[ RUNG 082 ]----------------------------------------------------------------
+Purpose: Red LED control during PLAYBACK
+
+  ──┤iGameState = STATE_PLAYBACK├──┤bFlashOn├──┤iCurrentButton = BTN_RED├──
+    ( doLedRed )──
+
+---[ RUNG 083 ]----------------------------------------------------------------
+Purpose: Yellow LED feedback during WAIT_INPUT
+Logic: Light LED while player holds button
+
+  ──┤iGameState = STATE_WAIT_INPUT├──┤diButtonYellow├──( doLedYellow )──
+
+---[ RUNG 084 ]----------------------------------------------------------------
+Purpose: Blue LED feedback during WAIT_INPUT
+
+  ──┤iGameState = STATE_WAIT_INPUT├──┤diButtonBlue├──( doLedBlue )──
+
+---[ RUNG 085 ]----------------------------------------------------------------
+Purpose: Red LED feedback during WAIT_INPUT
+
+  ──┤iGameState = STATE_WAIT_INPUT├──┤diButtonRed├──( doLedRed )──
+
+---[ RUNG 086 ]----------------------------------------------------------------
+Purpose: Turn off all LEDs in IDLE (already covered in Rung 021)
+Logic: Ensure clean slate
+
+  ──┤iGameState = STATE_IDLE├──( /doLedYellow )──
+                               ( /doLedBlue )
+                               ( /doLedRed )
+
+---[ RUNG 087 ]----------------------------------------------------------------
+Purpose: Game Over LED flash (covered in Rung 072-073)
+Note: See game over section for flashing pattern
+
+===============================================================================
+ALTERNATIVE IMPLEMENTATION: USING FUNCTION BLOCKS
+===============================================================================
+
+If you prefer more modular code, create Function Blocks:
+
+---[ FUNCTION BLOCK: FB_EdgeDetect ]-------------------------------------------
+
+FUNCTION_BLOCK FB_EdgeDetect
+VAR_INPUT
+    xInput : BOOL;              (* Current input state *)
+END_VAR
+VAR_OUTPUT
+    xRisingEdge : BOOL;         (* TRUE for one scan on rising edge *)
+END_VAR
+VAR
+    xLastState : BOOL := FALSE; (* Previous state *)
+END_VAR
+
+(* Ladder Logic in Function Block *)
+  ──┤xInput├──┤/xLastState├──( xRisingEdge )──
+  
+  ──┤xInput├──( xLastState )──
+
+END_FUNCTION_BLOCK
+
+---[ Usage in Main Program ]---------------------------------------------------
+
+VAR
+    fbYellowEdge : FB_EdgeDetect;
+    fbBlueEdge   : FB_EdgeDetect;
+    fbRedEdge    : FB_EdgeDetect;
+    fbStartEdge  : FB_EdgeDetect;
+END_VAR
+
+Rung 010-015 become:
+  ──[CALL fbYellowEdge(xInput := diButtonYellow)]──
+    [MOV fbYellowEdge.xRisingEdge bButtonY_Pressed]
+
+  ──[CALL fbBlueEdge(xInput := diButtonBlue)]──
+    [MOV fbBlueEdge.xRisingEdge bButtonB_Pressed]
+
+  ──[CALL fbRedEdge(xInput := diButtonRed)]──
+    [MOV fbRedEdge.xRisingEdge bButtonR_Pressed]
+
+  ──[CALL fbStartEdge(xInput := diStartButton)]──
+    [MOV fbStartEdge.xRisingEdge bStartPressed]
+
+===============================================================================
+STRUCTURED TEXT EQUIVALENT (for reference)
+===============================================================================
+
+For complex calculations, ST (Structured Text) may be clearer:
+
+---[ Random Number Generation (Rung 030 equivalent) ]-------------------------
+
+IF iGameState = STATE_PLAYBACK 
+   AND iPlaybackIndex = 0 
+   AND NOT bPlaybackActive THEN
+   
+    (* Linear Congruential Generator *)
+    iRandomSeed := (iRandomSeed * RNG_MULTIPLIER + RNG_INCREMENT) MOD RNG_MODULUS;
+    
+    (* Map to button range 1-3 *)
+    iCurrentButton := (iRandomSeed MOD NUM_BUTTONS) + 1;
+    
+    (* Add to sequence *)
+    aiSequence[iSequenceLength] := iCurrentButton;
+    iSequenceLength := iSequenceLength + 1;
+    
+    (* Mark playback as started *)
+    bPlaybackActive := TRUE;
+END_IF;
+
+===============================================================================
+TESTING & DEBUGGING RUNGS
+===============================================================================
+
+Add these rungs temporarily for testing (remove in production):
+
+---[ TEST RUNG 900 ]-----------------------------------------------------------
+Purpose: Force sequence to known pattern for testing
+Logic: Uncomment to test with predictable sequence
+
+(* Uncomment for testing *)
+(*
+  ──┤bTestMode├──[MOV 1 aiSequence[0]]──  (* Yellow *)
+                 [MOV 2 aiSequence[1]]     (* Blue *)
+                 [MOV 3 aiSequence[2]]     (* Red *)
+                 [MOV 1 aiSequence[3]]     (* Yellow *)
+                 [MOV 3 iSequenceLength]
+*)
+
+---[ TEST RUNG 901 ]-----------------------------------------------------------
+Purpose: Skip to specific game state for testing
+Logic: Force state change with test button
+
+(*
+  ──┤diTestButton1├──[MOV STATE_PLAYBACK iGameState]──
+  ──┤diTestButton2├──[MOV STATE_WAIT_INPUT iGameState]──
+*)
+
+---[ TEST RUNG 902 ]-----------------------------------------------------------
+Purpose: Display current state on indicator LEDs
+Logic: Map state to spare outputs for visual debugging
+
+(*
+  ──┤iGameState = STATE_IDLE├──( doTestLED0 )──
+  ──┤iGameState = STATE_PLAYBACK├──( doTestLED1 )──
+  ──┤iGameState = STATE_WAIT_INPUT├──( doTestLED2 )──
+  ──┤iGameState = STATE_GAME_OVER├──( doTestLED3 )──
+*)
+
+===============================================================================
+OPTIMIZATION NOTES
+===============================================================================
+
+1. SCAN TIME OPTIMIZATION:
+   - Place frequently executed rungs near the top
+   - Use RETURN statements to skip unused sections
+   - Consider using interrupts for time-critical tasks
+
+2. MEMORY OPTIMIZATION:
+   - Array size can be reduced if 100 levels is excessive
+   - Use BYTE instead of INT for button codes (1-3 fits in BYTE)
+   - Combine boolean flags into bit arrays if needed
+
+3. TIMING ADJUSTMENTS:
+   - Slow down for demo: increase flash/gap times
+   - Speed up for difficulty: decrease timeout values
+   - Add acceleration: reduce times as level increases
+
+Example progressive difficulty (add to Rung 057):
+  tInputTimeoutVal := MAX(T#1000ms, T#3000ms - TIME#(iLevel * 100ms));
+
+===============================================================================
+COMMON ISSUES & SOLUTIONS
+===============================================================================
+
+ISSUE 1: LEDs don't flash correctly
+- Check timer reset logic (must reset before next use)
+- Verify flash/gap timing values
+- Ensure only one LED output per scan cycle
+
+ISSUE 2: Button presses not detected
+- Verify edge detection logic (rising edge only)
+- Check input filtering settings (debounce)
+- Monitor bButtonX_Pressed flags in online mode
+
+ISSUE 3: Random sequence not random
+- Seed with variable value (time, counter, etc.)
+- Verify MOD operation works correctly
+- Test with different seed values
+
+ISSUE 4: Game state stuck
+- Check all transition conditions
+- Verify timer done bits (.DN)
+- Ensure no conflicting state assignments
+
+ISSUE 5: Input timeout too short/long
+- Adjust tInputTimeoutVal constant
+- Consider player skill level
+- Add difficulty settings
+
+===============================================================================
+PHASE 2 EXPANSION PREVIEW
+===============================================================================
+
+When adding the 4th button (White) in Phase 2:
+
+1. Add I/O:
+   - diButtonWhite AT %IX0.7
+   - doLedWhite AT %QX0.3
+
+2. Update constants:
+   - NUM_BUTTONS := 4 (when in 4-button mode)
+   - BTN_WHITE := 4
+
+3. Add mode selection:
+   - diMode3Button AT %IX0.11
+   - diMode4Button AT %IX0.12
+   
+4. Duplicate rungs for White button:
+   - Edge detection (3 rungs)
+   - Input capture (1 rung)
+   - LED control (3 rungs)
+
+5. Modify random generation:
+   - iCurrentButton := (iRandomSeed MOD iNumButtonsActive) + 1
+   - Where iNumButtonsActive = 3 or 4 based on mode selector
+
+===============================================================================
+END OF LADDER LOGIC RUNGS
+===============================================================================
+
+Total Rungs: ~90 (excluding test rungs)
+Estimated Scan Time: <5ms (typical for NX102)
+Memory Usage: ~2KB (variables + program)
+
+Document Version: 1.0
+Last Updated: October 1, 2025
+Author: Ladder Logic Implementation for Simon Says
+
+===============================================================================

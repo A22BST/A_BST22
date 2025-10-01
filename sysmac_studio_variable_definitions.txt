@@ -1,0 +1,178 @@
+===============================================================================
+SYSMAC STUDIO - GLOBAL VARIABLE LIST (GVL) DEFINITIONS
+Simon Says Project - Phase 1 (3 Buttons)
+===============================================================================
+
+Copy these variable definitions into Sysmac Studio:
+Global Variable List → Right Click → Insert New Variable
+
+===============================================================================
+GVL_IO_MAPPING - Input/Output Mapping
+===============================================================================
+
+(* DIGITAL INPUTS - NX-ID4442 *)
+VAR_GLOBAL
+    diButtonYellow      AT %IX0.1  : BOOL;  (* Yellow button contact - DI1 *)
+    diButtonBlue        AT %IX0.3  : BOOL;  (* Blue button contact - DI3 *)
+    diButtonRed         AT %IX0.5  : BOOL;  (* Red button contact - DI5 *)
+    diStartButton       AT %IX0.10 : BOOL;  (* Start/Mode selector - DI10 *)
+END_VAR
+
+(* DIGITAL OUTPUTS - NX-OD4256 *)
+VAR_GLOBAL
+    doLedRed            AT %QX0.0  : BOOL;  (* Red LED - DO0 *)
+    doLedBlue           AT %QX0.1  : BOOL;  (* Blue LED - DO1 *)
+    doLedYellow         AT %QX0.2  : BOOL;  (* Yellow LED - DO2 *)
+END_VAR
+
+===============================================================================
+GVL_GameState - Game State Variables
+===============================================================================
+
+VAR_GLOBAL
+    (* Game State Machine *)
+    iGameState          : INT := 0;         (* 0=IDLE, 1=PLAYBACK, 2=WAIT_INPUT, 3=GAME_OVER *)
+    bGameActive         : BOOL := FALSE;    (* TRUE when game is running *)
+    
+    (* Button Edge Detection *)
+    bButtonY_Pressed    : BOOL := FALSE;    (* Yellow button rising edge *)
+    bButtonB_Pressed    : BOOL := FALSE;    (* Blue button rising edge *)
+    bButtonR_Pressed    : BOOL := FALSE;    (* Red button rising edge *)
+    bStartPressed       : BOOL := FALSE;    (* Start button rising edge *)
+    
+    (* Edge detection memory *)
+    bButtonY_Last       : BOOL := FALSE;    (* Previous scan state *)
+    bButtonB_Last       : BOOL := FALSE;    (* Previous scan state *)
+    bButtonR_Last       : BOOL := FALSE;    (* Previous scan state *)
+    bStart_Last         : BOOL := FALSE;    (* Previous scan state *)
+    
+    (* Sequence Management *)
+    iSequenceLength     : INT := 0;         (* Current sequence length (1-100) *)
+    iPlaybackIndex      : INT := 0;         (* Current position in playback (0-based) *)
+    iInputIndex         : INT := 0;         (* Current position in player input (0-based) *)
+    aiSequence          : ARRAY[0..99] OF INT;  (* Sequence storage: 1=Yellow, 2=Blue, 3=Red *)
+    
+    (* Button Codes *)
+    iCurrentButton      : INT := 0;         (* Current button being shown: 1=Y, 2=B, 3=R *)
+    iPlayerInput        : INT := 0;         (* Button pressed by player: 1=Y, 2=B, 3=R *)
+    
+    (* Game Progress *)
+    iLevel              : INT := 1;         (* Current level (starts at 1) *)
+    iRandomSeed         : DINT := 12345;    (* Seed for pseudo-random number generation *)
+    
+    (* Playback State Flags *)
+    bPlaybackActive     : BOOL := FALSE;    (* TRUE during sequence playback *)
+    bFlashOn            : BOOL := FALSE;    (* LED flash is currently on *)
+    bGapActive          : BOOL := FALSE;    (* In gap period between flashes *)
+    bSequenceComplete   : BOOL := FALSE;    (* Player completed current sequence *)
+    bCorrectInput       : BOOL := FALSE;    (* Last input was correct *)
+    
+    (* Game Over Flags *)
+    bGameOver           : BOOL := FALSE;    (* Game ended *)
+    bWrongInput         : BOOL := FALSE;    (* Player made mistake *)
+    bTimeout            : BOOL := FALSE;    (* Player took too long *)
+    
+END_VAR
+
+===============================================================================
+GVL_Timers - Timer Variables
+===============================================================================
+
+VAR_GLOBAL
+    (* Timers - use TON function blocks *)
+    tFlashTimer         : TON;              (* LED flash duration timer *)
+    tGapTimer           : TON;              (* Gap between LED flashes timer *)
+    tInputTimeout       : TON;              (* Player input timeout timer *)
+    tGameOverTimer      : TON;              (* Game over display timer *)
+    
+    (* Timer Presets (in milliseconds) *)
+    tFlashTime          : TIME := T#500ms;  (* LED stays on for 500ms *)
+    tGapTime            : TIME := T#200ms;  (* 200ms gap between LEDs *)
+    tInputTimeoutVal    : TIME := T#3000ms; (* 3 seconds per button press *)
+    tGameOverTime       : TIME := T#3000ms; (* 3 seconds game over display *)
+    
+END_VAR
+
+===============================================================================
+GVL_Constants - Game Constants
+===============================================================================
+
+VAR_GLOBAL CONSTANT
+    (* Game Configuration *)
+    NUM_BUTTONS         : INT := 3;         (* Number of buttons in Phase 1 *)
+    MAX_SEQUENCE        : INT := 100;       (* Maximum sequence length *)
+    
+    (* Button Codes *)
+    BTN_YELLOW          : INT := 1;         (* Yellow button code *)
+    BTN_BLUE            : INT := 2;         (* Blue button code *)
+    BTN_RED             : INT := 3;         (* Red button code *)
+    BTN_NONE            : INT := 0;         (* No button *)
+    
+    (* Game States *)
+    STATE_IDLE          : INT := 0;         (* Idle/waiting to start *)
+    STATE_PLAYBACK      : INT := 1;         (* Playing back sequence *)
+    STATE_WAIT_INPUT    : INT := 2;         (* Waiting for player input *)
+    STATE_GAME_OVER     : INT := 3;         (* Game over state *)
+    
+    (* Random Number Generator Constants *)
+    RNG_MULTIPLIER      : DINT := 214013;   (* LCG multiplier *)
+    RNG_INCREMENT       : DINT := 2531011;  (* LCG increment *)
+    RNG_MODULUS         : DINT := 65536;    (* LCG modulus *)
+    
+END_VAR
+
+===============================================================================
+TYPE DEFINITIONS (Optional - for better code structure)
+===============================================================================
+
+(* Create an ENUM for game states *)
+TYPE E_GameState :
+(
+    IDLE        := 0,
+    PLAYBACK    := 1,
+    WAIT_INPUT  := 2,
+    GAME_OVER   := 3
+);
+END_TYPE
+
+(* Create an ENUM for button codes *)
+TYPE E_ButtonCode :
+(
+    BTN_NONE    := 0,
+    BTN_YELLOW  := 1,
+    BTN_BLUE    := 2,
+    BTN_RED     := 3
+);
+END_TYPE
+
+===============================================================================
+NOTES FOR SYSMAC STUDIO IMPLEMENTATION
+===============================================================================
+
+1. I/O ADDRESS MAPPING:
+   - The AT %IX0.1 syntax maps variables to physical I/O
+   - Adjust the addresses based on your actual module configuration
+   - Format: %IX[slot].[channel] for inputs
+   - Format: %QX[slot].[channel] for outputs
+   
+2. TIMER SETUP:
+   - TON = On-Delay Timer (IEC 61131-3 standard)
+   - Call timers in ladder logic: TON(IN:=condition, PT:=preset)
+   - Check timer status: .Q (output), .ET (elapsed time), .DN (done)
+   
+3. ARRAY INDEXING:
+   - Arrays in IEC 61131-3 are 0-based by default
+   - aiSequence[0..99] provides 100 elements (0 through 99)
+   - Always check bounds before accessing array elements
+   
+4. VARIABLE INITIALIZATION:
+   - Variables initialize to declared values on PLC power-up
+   - Use RETAIN keyword if you need values to persist across power cycles
+   - Example: VAR_GLOBAL RETAIN ... END_VAR
+   
+5. SCAN CYCLE CONSIDERATIONS:
+   - PLC scans top to bottom, left to right
+   - Edge detection must happen in same scan cycle as state checks
+   - Be careful with race conditions in state transitions
+
+===============================================================================
