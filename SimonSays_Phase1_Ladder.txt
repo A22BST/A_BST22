@@ -1,0 +1,200 @@
+================================================================================
+SIMON SAYS GAME - PHASE 1 LADDER LOGIC
+For Omron NX102-1100 PLC with Sysmac Studio
+================================================================================
+
+I/O ALLOCATION TABLE:
+----------------------
+Input Module (NX-ID4442):
+- DI1 (0.1): Yellow Button Contact
+- DI3 (0.3): Blue Button Contact  
+- DI5 (0.5): Red Button Contact
+
+Output Module (NX-OD4256):
+- DO0 (0.0): Red LED
+- DO1 (0.1): Blue LED
+- DO2 (0.2): Yellow LED
+
+================================================================================
+GLOBAL VARIABLES TO DEFINE:
+================================================================================
+
+Name                    Data Type    Initial Value    Comment
+--------------------------------------------------------------------------------
+GameState              INT          0                0=Idle, 1=NewGame, 2=ShowSeq, 3=WaitInput, 4=Check, 5=GameOver, 6=Victory
+GameSequence           ARRAY[0..49] OF INT          Stores button sequence
+CurrentLevel           INT          0                Current sequence length
+SequenceIndex          INT          0                Position in sequence display
+PlayerInputIndex       INT          0                Position in player input
+MaxLevel               INT          10               Maximum sequence length
+LastButtonPressed      INT          0                Last button: 1=Y, 2=B, 3=R
+RandomSeed             DINT         12345            Random number seed
+RandomValue            INT          0                Generated random value
+StartGame              BOOL         FALSE            Start game trigger
+ShowingSequence        BOOL         FALSE            Currently showing sequence
+WaitingForInput        BOOL         FALSE            Waiting for player input
+InputCorrect           BOOL         TRUE             Player input is correct
+
+TIMERS:
+TMR_Flash              TON          T#500MS          LED flash duration
+TMR_Gap                TON          T#300MS          Gap between flashes
+TMR_InputTimeout       TON          T#5S             Player input timeout
+TMR_StartDelay         TON          T#2S             Game start delay
+TMR_Celebration        TON          T#100MS          Victory animation timer
+
+================================================================================
+LADDER LOGIC RUNGS:
+================================================================================
+
+RUNG 000: [EDGE DETECTION FOR BUTTON INPUTS]
+|---[P]---[Yellow_Button_Input (0.1)]----(Yellow_Press)-------|
+|---[P]---[Blue_Button_Input (0.3)]------(Blue_Press)---------|
+|---[P]---[Red_Button_Input (0.5)]-------(Red_Press)----------|
+
+RUNG 001: [IDLE STATE - GAME STATE = 0]
+|---[=]---[GameState][0]---+---[/]---[Yellow_LED (0.2)]-------|
+|                          +---[/]---[Blue_LED (0.1)]---------|
+|                          +---[/]---[Red_LED (0.0)]----------|
+|                          +---[MOV][0][CurrentLevel]---------|
+|                          +---[MOV][0][SequenceIndex]--------|
+|                          +---[MOV][0][PlayerInputIndex]-----|
+
+RUNG 002: [START GAME TRIGGER FROM IDLE]
+|---[=]---[GameState][0]---+---[Yellow_Press]---+---[MOV][1][GameState]---|
+|                          +---[Blue_Press]-----+                         |
+|                          +---[Red_Press]------+                         |
+
+RUNG 003: [NEW GAME/NEXT LEVEL - GAME STATE = 1]
+|---[=]---[GameState][1]---[TMR_StartDelay]---+---[Yellow_LED (0.2)]---|
+|                                              +---[Blue_LED (0.1)]-----|
+|                                              +---[Red_LED (0.0)]------|
+
+RUNG 004: [GENERATE NEW SEQUENCE ELEMENT]
+|---[=]---[GameState][1]---[TMR_StartDelay.Q]---+---[INC][CurrentLevel]---|
+|                                                +---[RANDOM][RandomValue]-|
+|                                                +---[MOV][RandomValue][GameSequence[CurrentLevel-1]]---|
+|                                                +---[MOV][0][SequenceIndex]---|
+|                                                +---[MOV][0][PlayerInputIndex]---|
+|                                                +---[MOV][2][GameState]---|
+
+RUNG 005: [SHOW SEQUENCE - GAME STATE = 2]
+|---[=]---[GameState][2]---[<]---[SequenceIndex][CurrentLevel]---+---|
+|                                                                 |
+|---[NOT TMR_Flash.IN]---[NOT TMR_Gap.IN]---[TMR_Flash]----------|
+
+RUNG 006: [ILLUMINATE CORRECT LED DURING SEQUENCE]
+|---[=]---[GameState][2]---[TMR_Flash.IN]---+---|
+|                                            |
+|---[=]---[GameSequence[SequenceIndex]][1]---[Yellow_LED (0.2)]---|
+|---[=]---[GameSequence[SequenceIndex]][2]---[Blue_LED (0.1)]-----|
+|---[=]---[GameSequence[SequenceIndex]][3]---[Red_LED (0.0)]------|
+
+RUNG 007: [SEQUENCE TIMING CONTROL]
+|---[=]---[GameState][2]---[TMR_Flash.Q]---+---[/]---[Yellow_LED (0.2)]---|
+|                                           +---[/]---[Blue_LED (0.1)]-----|
+|                                           +---[/]---[Red_LED (0.0)]------|
+|                                           +---[TMR_Gap]------------------|
+
+RUNG 008: [ADVANCE SEQUENCE INDEX]
+|---[=]---[GameState][2]---[TMR_Gap.Q]---[INC][SequenceIndex]---|
+
+RUNG 009: [SEQUENCE COMPLETE - MOVE TO PLAYER INPUT]
+|---[=]---[GameState][2]---[>=]---[SequenceIndex][CurrentLevel]---+---[MOV][3][GameState]---|
+|                                                                  +---[MOV][0][PlayerInputIndex]---|
+
+RUNG 010: [WAIT FOR PLAYER INPUT - GAME STATE = 3]
+|---[=]---[GameState][3]---[TMR_InputTimeout]---|
+
+RUNG 011: [CAPTURE PLAYER INPUT - YELLOW]
+|---[=]---[GameState][3]---[Yellow_Press]---+---[MOV][1][LastButtonPressed]---|
+|                                            +---[MOV][4][GameState]-----------|
+|                                            +---[Yellow_LED (0.2)]------------|
+
+RUNG 012: [CAPTURE PLAYER INPUT - BLUE]
+|---[=]---[GameState][3]---[Blue_Press]---+---[MOV][2][LastButtonPressed]---|
+|                                          +---[MOV][4][GameState]----------|
+|                                          +---[Blue_LED (0.1)]-------------|
+
+RUNG 013: [CAPTURE PLAYER INPUT - RED]
+|---[=]---[GameState][3]---[Red_Press]---+---[MOV][3][LastButtonPressed]---|
+|                                         +---[MOV][4][GameState]----------|
+|                                         +---[Red_LED (0.0)]--------------|
+
+RUNG 014: [INPUT TIMEOUT CHECK]
+|---[=]---[GameState][3]---[TMR_InputTimeout.Q]---[MOV][5][GameState]---|
+
+RUNG 015: [CHECK INPUT - GAME STATE = 4]
+|---[=]---[GameState][4]---[=]---[LastButtonPressed][GameSequence[PlayerInputIndex]]---+---|
+|                                                                                       |
+|---[INC][PlayerInputIndex]---|
+
+RUNG 016: [WRONG INPUT DETECTED]
+|---[=]---[GameState][4]---[<>]---[LastButtonPressed][GameSequence[PlayerInputIndex]]---[MOV][5][GameState]---|
+
+RUNG 017: [SEQUENCE COMPLETE - CHECK FOR VICTORY OR NEXT LEVEL]
+|---[=]---[GameState][4]---[>=]---[PlayerInputIndex][CurrentLevel]---+---|
+|                                                                     |
+|---[>=]---[CurrentLevel][MaxLevel]---[MOV][6][GameState]------------|
+|---[<]----[CurrentLevel][MaxLevel]---[MOV][1][GameState]------------|
+
+RUNG 018: [CONTINUE PLAYER INPUT]
+|---[=]---[GameState][4]---[<]---[PlayerInputIndex][CurrentLevel]---[MOV][3][GameState]---|
+
+RUNG 019: [GAME OVER STATE - FLASH RED LED]
+|---[=]---[GameState][5]---[TMR_Flash]---[ALT]---[Red_LED (0.0)]---|
+
+RUNG 020: [GAME OVER - RESTART ON BUTTON PRESS]
+|---[=]---[GameState][5]---+---[Yellow_Press]---+---[MOV][0][GameState]---|
+|                          +---[Blue_Press]-----+                         |
+|                          +---[Red_Press]------+                         |
+
+RUNG 021: [VICTORY STATE - CELEBRATION PATTERN]
+|---[=]---[GameState][6]---[TMR_Celebration]---[CELEBRATION_PATTERN]---|
+
+RUNG 022: [VICTORY - RESTART ON BUTTON PRESS]
+|---[=]---[GameState][6]---+---[Yellow_Press]---+---[MOV][0][GameState]---|
+|                          +---[Blue_Press]-----+                         |
+|                          +---[Red_Press]------+                         |
+
+================================================================================
+FUNCTION BLOCKS TO CREATE:
+================================================================================
+
+1. RANDOM Number Generator Function Block:
+   - Input: Seed (DINT)
+   - Output: RandomValue (INT, 1-3)
+   - Formula: Linear Congruential Generator
+   
+2. CELEBRATION_PATTERN Function Block:
+   - Cycles through LEDs in sequence
+   - Creates victory animation
+
+================================================================================
+IMPLEMENTATION NOTES:
+================================================================================
+
+1. Timer Configuration:
+   - All timers should be configured as TON (Timer On Delay)
+   - Adjust timing values based on desired difficulty
+
+2. Array Handling:
+   - GameSequence array stores values 1-3 (Yellow, Blue, Red)
+   - Maximum sequence length is configurable via MaxLevel
+
+3. Edge Detection:
+   - Use P (positive edge) contacts for button press detection
+   - Prevents multiple triggers from held buttons
+
+4. LED Control:
+   - LEDs light when buttons are pressed during player input
+   - LEDs flash in sequence during demonstration
+   - All LEDs flash at game start
+   - Red LED flashes on game over
+   - Rotating pattern on victory
+
+5. State Machine:
+   - Clean transitions between states
+   - No overlapping state conditions
+   - Reset conditions clearly defined
+
+================================================================================

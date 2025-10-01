@@ -1,0 +1,187 @@
+================================================================================
+ESSENTIAL LADDER LOGIC RUNGS FOR SIMON SAYS - PHASE 1
+Simplified Implementation for Sysmac Studio
+================================================================================
+
+REQUIRED VARIABLES (Create in Global Variables):
+- GameState (INT): 0=Idle, 1=NewRound, 2=ShowSeq, 3=PlayerInput, 4=Check, 5=GameOver
+- Sequence[20] (ARRAY OF INT): Stores the sequence
+- Level (INT): Current level (sequence length)
+- ShowIndex (INT): Current position showing sequence
+- InputIndex (INT): Current position of player input
+- LastButton (INT): Last button pressed (1=Y, 2=B, 3=R)
+- T_Flash (TON): Flash timer (500ms)
+- T_Gap (TON): Gap timer (300ms)
+- T_Timeout (TON): Input timeout (5s)
+
+================================================================================
+CORE LADDER RUNGS:
+================================================================================
+
+RUNG 001: [START GAME FROM IDLE]
+|--[CMP=]--[GameState][0]--+--[%IX0.1]--+--[MOV]--[1]--[GameState]--|
+|                          +--[%IX0.3]--+                            |
+|                          +--[%IX0.5]--+                            |
+Comment: Any button press in idle state starts the game
+
+--------------------------------------------------------------------------------
+
+RUNG 002: [NEW ROUND - ADD TO SEQUENCE]
+|--[CMP=]--[GameState][1]--+--[ADD]--[Level][1]--[Level]------------|
+|                          +--[RANDOM]--[1][3]--[Sequence[Level]]---|
+|                          +--[MOV]--[0]--[ShowIndex]---------------|
+|                          +--[MOV]--[2]--[GameState]---------------|
+Comment: Add new random element and start showing sequence
+
+--------------------------------------------------------------------------------
+
+RUNG 003: [SHOW SEQUENCE - START FLASH]
+|--[CMP=]--[GameState][2]--[CMP<]--[ShowIndex][Level]--[NOT T_Flash.IN]--[T_Flash]--|
+Comment: Start flash timer for current sequence element
+
+--------------------------------------------------------------------------------
+
+RUNG 004: [LIGHT CORRECT LED DURING FLASH]
+|--[CMP=]--[GameState][2]--[T_Flash.IN]--+--[CMP=]--[Sequence[ShowIndex]][1]--[%QX0.2]--| (Yellow)
+|                                         +--[CMP=]--[Sequence[ShowIndex]][2]--[%QX0.1]--| (Blue)
+|                                         +--[CMP=]--[Sequence[ShowIndex]][3]--[%QX0.0]--| (Red)
+Comment: Turn on the LED for current sequence element
+
+--------------------------------------------------------------------------------
+
+RUNG 005: [END FLASH - START GAP]
+|--[CMP=]--[GameState][2]--[T_Flash.Q]--+--[RST]--[%QX0.0]---------|
+|                                        +--[RST]--[%QX0.1]---------|
+|                                        +--[RST]--[%QX0.2]---------|
+|                                        +--[RST]--[T_Flash]--------|
+|                                        +--[T_Gap]-----------------|
+Comment: Turn off LEDs and start gap timer
+
+--------------------------------------------------------------------------------
+
+RUNG 006: [ADVANCE TO NEXT IN SEQUENCE]
+|--[CMP=]--[GameState][2]--[T_Gap.Q]--+--[ADD]--[ShowIndex][1]--[ShowIndex]--|
+|                                      +--[RST]--[T_Gap]---------------------|
+Comment: Move to next element in sequence
+
+--------------------------------------------------------------------------------
+
+RUNG 007: [SEQUENCE COMPLETE - WAIT FOR PLAYER]
+|--[CMP=]--[GameState][2]--[CMP>=]--[ShowIndex][Level]--+--[MOV]--[3]--[GameState]--|
+|                                                        +--[MOV]--[0]--[InputIndex]-|
+|                                                        +--[T_Timeout]--------------|
+Comment: Finished showing sequence, start player input phase
+
+--------------------------------------------------------------------------------
+
+RUNG 008: [CAPTURE YELLOW BUTTON]
+|--[CMP=]--[GameState][3]--[↑%IX0.1]--+--[MOV]--[1]--[LastButton]--|
+|                                      +--[MOV]--[4]--[GameState]---|
+|                                      +--[SET]--[%QX0.2]-----------|
+Comment: Yellow button pressed - save and check
+
+--------------------------------------------------------------------------------
+
+RUNG 009: [CAPTURE BLUE BUTTON]
+|--[CMP=]--[GameState][3]--[↑%IX0.3]--+--[MOV]--[2]--[LastButton]--|
+|                                      +--[MOV]--[4]--[GameState]---|
+|                                      +--[SET]--[%QX0.1]-----------|
+Comment: Blue button pressed - save and check
+
+--------------------------------------------------------------------------------
+
+RUNG 010: [CAPTURE RED BUTTON]
+|--[CMP=]--[GameState][3]--[↑%IX0.5]--+--[MOV]--[3]--[LastButton]--|
+|                                      +--[MOV]--[4]--[GameState]---|
+|                                      +--[SET]--[%QX0.0]-----------|
+Comment: Red button pressed - save and check
+
+--------------------------------------------------------------------------------
+
+RUNG 011: [TURN OFF LEDS WHEN BUTTONS RELEASED]
+|--[CMP=]--[GameState][3]--+--[NOT %IX0.1]--[RST]--[%QX0.2]--| (Yellow)
+|                          +--[NOT %IX0.3]--[RST]--[%QX0.1]--| (Blue)
+|                          +--[NOT %IX0.5]--[RST]--[%QX0.0]--| (Red)
+Comment: Turn off LED when button is released
+
+--------------------------------------------------------------------------------
+
+RUNG 012: [CHECK INPUT - CORRECT]
+|--[CMP=]--[GameState][4]--[CMP=]--[LastButton][Sequence[InputIndex]]--+--[ADD]--[InputIndex][1]--[InputIndex]--|
+|                                                                       +--[MOV]--[3]--[GameState]---------------|
+Comment: Correct input - increment index and wait for next
+
+--------------------------------------------------------------------------------
+
+RUNG 013: [CHECK INPUT - WRONG]
+|--[CMP=]--[GameState][4]--[CMP<>]--[LastButton][Sequence[InputIndex]]--[MOV]--[5]--[GameState]--|
+Comment: Wrong input - game over
+
+--------------------------------------------------------------------------------
+
+RUNG 014: [ALL INPUTS CORRECT - NEXT ROUND]
+|--[CMP=]--[GameState][3]--[CMP>=]--[InputIndex][Level]--+--[MOV]--[0]--[ShowIndex]--|
+|                                                         +--[MOV]--[0]--[InputIndex]-|
+|                                                         +--[MOV]--[1]--[GameState]--|
+Comment: Player completed sequence - start next round
+
+--------------------------------------------------------------------------------
+
+RUNG 015: [TIMEOUT - GAME OVER]
+|--[CMP=]--[GameState][3]--[T_Timeout.Q]--[MOV]--[5]--[GameState]--|
+Comment: Player took too long - game over
+
+--------------------------------------------------------------------------------
+
+RUNG 016: [GAME OVER - FLASH RED]
+|--[CMP=]--[GameState][5]--[PULSE]--[500ms]--[%QX0.0]--|
+Comment: Flash red LED to indicate game over
+
+--------------------------------------------------------------------------------
+
+RUNG 017: [RESET GAME FROM GAME OVER]
+|--[CMP=]--[GameState][5]--+--[%IX0.1]--+--[MOV]--[0]--[GameState]--|
+|                          +--[%IX0.3]--+--[MOV]--[0]--[Level]------|
+|                          +--[%IX0.5]--+--[RST]--[%QX0.0]----------|
+|                                        +--[RST]--[%QX0.1]----------|
+|                                        +--[RST]--[%QX0.2]----------|
+Comment: Any button press resets the game
+
+================================================================================
+IMPLEMENTATION NOTES:
+================================================================================
+
+1. SYMBOL MEANINGS:
+   - [CMP=]: Compare Equal
+   - [CMP<]: Compare Less Than
+   - [CMP>=]: Compare Greater or Equal
+   - [CMP<>]: Compare Not Equal
+   - [↑]: Rising Edge (Positive Edge)
+   - [MOV]: Move value
+   - [ADD]: Addition
+   - [RST]: Reset (set to FALSE/0)
+   - [SET]: Set (set to TRUE/1)
+   - %IX0.x: Input bit
+   - %QX0.x: Output bit
+
+2. TIMER USAGE:
+   - T_Flash: Use TON, preset to T#500MS
+   - T_Gap: Use TON, preset to T#300MS
+   - T_Timeout: Use TON, preset to T#5S
+
+3. RANDOM NUMBER:
+   - Create a simple function that generates 1-3
+   - Can use system clock lowest bits if available
+   - Or use the FB_RandomGenerator function block provided
+
+4. EDGE DETECTION:
+   - [↑] represents rising edge detection
+   - In Sysmac Studio, use P_TRIG function block or [P] contact
+
+5. TESTING ORDER:
+   - Test each rung individually first
+   - Start with simple I/O test (button lights its LED)
+   - Then test state transitions
+   - Finally test complete game flow
+
+================================================================================
