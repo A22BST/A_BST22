@@ -1,0 +1,280 @@
+// ============================================================================
+// SIMON SAYS GAME - PHASE 1 (3 BUTTONS: RED, BLUE, YELLOW)
+// Hardware: Omron NX102-1100 with NX-ID4442 and NX-OD4256
+// Buttons: RAFI RAMO 22 T illuminated pushbuttons (M12, 4-pin)
+// ============================================================================
+
+// ============================================================================
+// I/O MAPPING DEFINITIONS
+// ============================================================================
+// Digital Inputs (NX-ID4442):
+// DI1 = Yellow Button Contact (Pin 4 Black wire)
+// DI3 = Blue Button Contact (Pin 4 Black wire)  
+// DI5 = Red Button Contact (Pin 4 Black wire)
+
+// Digital Outputs (NX-OD4256):
+// DO0 = Red Button LED (Pin 2 White wire)
+// DO1 = Blue Button LED (Pin 2 White wire)
+// DO2 = Yellow Button LED (Pin 2 White wire)
+
+// ============================================================================
+// MEMORY ALLOCATION (Work Area W0-W999)
+// ============================================================================
+// W0 = Game State (0=Idle, 1=PlaySequence, 2=WaitInput, 3=GameOver)
+// W1 = Current Sequence Length
+// W2 = Current Position in Playback
+// W3 = Player Input Position
+// W4-W103 = Sequence Storage Array (100 steps max)
+// W104 = Flash Timer Value (500ms)
+// W105 = Gap Timer Value (200ms)
+// W106 = Input Timeout Value (3000ms)
+// W107 = Score
+// W108 = Random Seed
+// W109 = Debounce Timer for Yellow
+// W110 = Debounce Timer for Blue
+// W111 = Debounce Timer for Red
+
+// ============================================================================
+// PROGRAM INITIALIZATION
+// ============================================================================
+// Initialize on first scan only
+LD NOT W0.0        // Check if game state is uninitialized
+AND NOT W0.1
+AND NOT W0.2
+AND NOT W0.3
+OUT W0.0           // Set initial state to Idle
+OUT W1.0           // Reset sequence length
+OUT W2.0           // Reset playback position
+OUT W3.0           // Reset input position
+OUT W107.0         // Reset score
+LD #500            // Load flash duration
+OUT W104           // Store flash timer value
+LD #200            // Load gap duration
+OUT W105           // Store gap timer value
+LD #3000           // Load input timeout
+OUT W106           // Store timeout value
+LD #12345          // Load random seed
+OUT W108           // Store random seed
+
+// ============================================================================
+// MAIN GAME STATE MACHINE
+// ============================================================================
+
+// STATE 0: IDLE - Wait for game start
+// Start game when any button is pressed
+LD W0.0            // If in Idle state
+AND (DI1 OR DI3 OR DI5)  // And any button pressed
+OUT W0.1           // Move to PlaySequence state
+OUT W1.1           // Set sequence length to 1
+OUT W2.0           // Reset playback position
+OUT W3.0           // Reset input position
+OUT W107.0         // Reset score
+
+// Generate first sequence step
+LD W0.1            // If starting new sequence
+AND NOT W2.0       // And position is 0
+CALL RND(1,3)      // Generate random 1-3
+OUT W4             // Store first sequence step
+
+// STATE 1: PLAY SEQUENCE - Flash buttons in order
+LD W0.1            // If in PlaySequence state
+AND W2.0           // And position > 0
+CALL PlaySequenceStep
+
+// Check if sequence playback complete
+LD W0.1            // If in PlaySequence state
+AND W2.0           // Current position
+CMP W1             // Compare with sequence length
+AND NOT CMP_EQ     // If position >= length
+OUT W0.2           // Move to WaitInput state
+OUT W2.0           // Reset position
+OUT W3.0           // Reset input position
+
+// STATE 2: WAIT INPUT - Wait for player input
+LD W0.2            // If in WaitInput state
+CALL CheckPlayerInput
+
+// Check if player completed sequence correctly
+LD W0.2            // If in WaitInput state
+AND W3.0           // Player input position
+CMP W1             // Compare with sequence length
+AND CMP_EQ         // If positions match
+AND W3.0           // And position > 0
+OUT W107.1         // Increment score
+OUT W1.1           // Increment sequence length
+OUT W0.1           // Move to PlaySequence state
+OUT W2.0           // Reset playback position
+OUT W3.0           // Reset input position
+
+// STATE 3: GAME OVER - Player made mistake
+LD W0.3            // If in GameOver state
+AND (DI1 OR DI3 OR DI5)  // And any button pressed
+OUT W0.0           // Return to Idle state
+
+// ============================================================================
+// INPUT DEBOUNCING
+// ============================================================================
+
+// Yellow Button Debouncing
+LD DI1             // Yellow button input
+AND NOT W109.0     // Not already debounced
+OUT W109.0         // Set debounce flag
+TIM T100 50        // 50ms debounce timer
+
+LD NOT DI1         // Button released
+OUT W109.0         // Clear debounce flag
+RST T100           // Reset debounce timer
+
+// Blue Button Debouncing
+LD DI3             // Blue button input
+AND NOT W110.0     // Not already debounced
+OUT W110.0         // Set debounce flag
+TIM T101 50        // 50ms debounce timer
+
+LD NOT DI3         // Button released
+OUT W110.0         // Clear debounce flag
+RST T101           // Reset debounce timer
+
+// Red Button Debouncing
+LD DI5             // Red button input
+AND NOT W111.0     // Not already debounced
+OUT W111.0         // Set debounce flag
+TIM T102 50        // 50ms debounce timer
+
+LD NOT DI5         // Button released
+OUT W111.0         // Clear debounce flag
+RST T102           // Reset debounce timer
+
+// ============================================================================
+// LED OUTPUT CONTROL
+// ============================================================================
+
+// Red LED Control (DO0)
+LD W0.1            // If playing sequence
+AND W2.0           // And position > 0
+AND W4[W2]         // Get sequence value at position
+CMP #1             // Check if Red button
+AND CMP_EQ         // If it's Red
+TIM T200 W104      // Flash timer
+AND T200           // During flash time
+OUT DO0            // Turn on Red LED
+
+// Blue LED Control (DO1)
+LD W0.1            // If playing sequence
+AND W2.0           // And position > 0
+AND W4[W2]         // Get sequence value at position
+CMP #2             // Check if Blue button
+AND CMP_EQ         // If it's Blue
+TIM T201 W104      // Flash timer
+AND T201           // During flash time
+OUT DO1            // Turn on Blue LED
+
+// Yellow LED Control (DO2)
+LD W0.1            // If playing sequence
+AND W2.0           // And position > 0
+AND W4[W2]         // Get sequence value at position
+CMP #3             // Check if Yellow button
+AND CMP_EQ         // If it's Yellow
+TIM T202 W104      // Flash timer
+AND T202           // During flash time
+OUT DO2            // Turn on Yellow LED
+
+// ============================================================================
+// SUBROUTINE: PlaySequenceStep
+// ============================================================================
+PlaySequenceStep:
+// Get current sequence value
+LD W4[W2]          // Load sequence value at current position
+OUT W120           // Store in temporary register
+
+// Flash appropriate LED based on sequence value
+LD W120
+CMP #1             // Red button
+AND CMP_EQ
+TIM T210 W104      // Flash timer
+AND T210
+OUT DO0            // Flash Red LED
+
+LD W120
+CMP #2             // Blue button
+AND CMP_EQ
+TIM T211 W104      // Flash timer
+AND T211
+OUT DO1            // Flash Blue LED
+
+LD W120
+CMP #3             // Yellow button
+AND CMP_EQ
+TIM T212 W104      // Flash timer
+AND T212
+OUT DO2            // Flash Yellow LED
+
+// Wait for gap between flashes
+TIM T220 W105      // Gap timer
+AND T220
+OUT W2.1           // Increment position
+RET
+
+// ============================================================================
+// SUBROUTINE: CheckPlayerInput
+// ============================================================================
+CheckPlayerInput:
+// Get expected sequence value
+LD W4[W3]          // Load expected value at input position
+OUT W121           // Store expected value
+
+// Check Red button input
+LD DI5             // Red button pressed
+AND W0.2           // If waiting for input
+AND W121           // Expected value
+CMP #1             // Should be Red
+AND CMP_EQ         // If correct
+OUT W3.1           // Increment input position
+RET
+
+// Check Blue button input
+LD DI3             // Blue button pressed
+AND W0.2           // If waiting for input
+AND W121           // Expected value
+CMP #2             // Should be Blue
+AND CMP_EQ         // If correct
+OUT W3.1           // Increment input position
+RET
+
+// Check Yellow button input
+LD DI1             // Yellow button pressed
+AND W0.2           // If waiting for input
+AND W121           // Expected value
+CMP #3             // Should be Yellow
+AND CMP_EQ         // If correct
+OUT W3.1           // Increment input position
+RET
+
+// Wrong button pressed - Game Over
+LD (DI1 OR DI3 OR DI5)  // Any button pressed
+AND W0.2           // If waiting for input
+AND W121           // Expected value
+CMP #1             // Not Red
+AND NOT CMP_EQ
+LD (DI1 OR DI3 OR DI5)  // Any button pressed
+AND W0.2           // If waiting for input
+AND W121           // Expected value
+CMP #2             // Not Blue
+AND NOT CMP_EQ
+LD (DI1 OR DI3 OR DI5)  // Any button pressed
+AND W0.2           // If waiting for input
+AND W121           // Expected value
+CMP #3             // Not Yellow
+AND NOT CMP_EQ
+OUT W0.3           // Move to GameOver state
+
+// Input timeout
+LD W0.2            // If waiting for input
+TIM T230 W106      // Input timeout timer
+AND T230
+OUT W0.3           // Move to GameOver state
+RET
+
+// ============================================================================
+// END OF PROGRAM
+// ============================================================================

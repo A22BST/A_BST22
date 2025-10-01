@@ -1,0 +1,50 @@
+SIMON SAYS GAME FLOW DIAGRAM
+============================
+
+1. POWER ON
+   ↓
+2. INITIALIZE VARIABLES
+   - GameState = 0 (Idle)
+   - SeqLength = 0
+   - Score = 0
+   ↓
+3. IDLE STATE (GameState = 0)
+   - Wait for any button press
+   ↓
+4. START GAME
+   - Generate first random sequence step (1-3)
+   - Set SeqLength = 1
+   - GameState = 1 (Play)
+   ↓
+5. PLAY SEQUENCE (GameState = 1)
+   - Flash LED for current step (500ms)
+   - Wait gap time (200ms)
+   - Move to next step
+   ↓
+6. SEQUENCE COMPLETE?
+   - If Yes: GameState = 2 (Wait)
+   - If No: Continue flashing sequence
+   ↓
+7. WAIT INPUT (GameState = 2)
+   - Wait for player to press correct button
+   - 3-second timeout
+   ↓
+8. BUTTON PRESSED?
+   - If Correct: Move to next player step
+   - If Wrong: GameState = 3 (Over)
+   - If Timeout: GameState = 3 (Over)
+   ↓
+9. SEQUENCE COMPLETE BY PLAYER?
+   - If Yes: Increment score, increase sequence length
+   - Generate next random step
+   - GameState = 1 (Play)
+   - If No: Continue waiting for input
+   ↓
+10. GAME OVER (GameState = 3)
+    - Wait for any button press to restart
+    - Return to Idle state
+
+BUTTON CODES:
+1 = Red Button (DO0/DI5)
+2 = Blue Button (DO1/DI3)  
+3 = Yellow Button (DO2/DI1)
