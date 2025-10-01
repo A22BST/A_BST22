@@ -1,0 +1,55 @@
+Variable Name,Data Type,Address,Initial Value,Description
+# Physical I/O
+YellowButton_Input,BOOL,%IX0.1,FALSE,Yellow button contact input (DI1)
+BlueButton_Input,BOOL,%IX0.3,FALSE,Blue button contact input (DI3)
+RedButton_Input,BOOL,%IX0.5,FALSE,Red button contact input (DI5)
+RedButton_LED,BOOL,%QX0.0,FALSE,Red button LED output (DO0)
+BlueButton_LED,BOOL,%QX0.1,FALSE,Blue button LED output (DO1)
+YellowButton_LED,BOOL,%QX0.2,FALSE,Yellow button LED output (DO2)
+
+# Edge Detection
+YellowButton_Press,BOOL,,FALSE,Rising edge of yellow button
+BlueButton_Press,BOOL,,FALSE,Rising edge of blue button
+RedButton_Press,BOOL,,FALSE,Rising edge of red button
+StartButton,BOOL,,FALSE,Start button (will map to selector switch)
+StartGame,BOOL,,FALSE,Start game trigger
+
+# Game States
+GameActive,BOOL,,FALSE,Game is currently active
+GameState_Idle,BOOL,,TRUE,Idle state flag
+GameState_ShowSeq,BOOL,,FALSE,Showing sequence state flag
+GameState_WaitInput,BOOL,,FALSE,Waiting for input state flag
+GameWin,BOOL,,FALSE,Game won flag
+GameLose,BOOL,,FALSE,Game lost flag
+
+# Sequence Management
+GameSequence,ARRAY[0..49] OF INT,,0,Stores the game sequence
+CurrentLevel,INT,,0,Current game level (sequence length)
+MaxLevel,INT,,10,Maximum sequence length
+SequenceIndex,INT,,0,Current position in sequence display
+SeqGenerated,BOOL,,FALSE,Sequence generation flag
+
+# Player Input
+PlayerInputIndex,INT,,0,Current player input position
+CurrentInput,INT,,0,Current button pressed (1=Y 2=B 3=R)
+InputReceived,BOOL,,FALSE,Input received flag
+InputCorrect,BOOL,,FALSE,Input is correct flag
+InputWrong,BOOL,,FALSE,Input is wrong flag
+
+# LED Control
+LED_ON,BOOL,,FALSE,LED is currently on
+LED_GAP,BOOL,,FALSE,In gap between LEDs
+LevelComplete,BOOL,,FALSE,Level completed successfully
+
+# Timers
+ShowTimer,TON,,500ms,Timer for LED display duration
+GapTimer,TON,,200ms,Timer for gap between LEDs
+InputTimeout,TON,,3000ms,Timer for player input timeout
+GameOverTimer,TON,,2000ms,Timer for game over display
+T0,TON,,100ms,Blink timer 1
+T1,TON,,200ms,Blink timer 2
+
+# Random Number Generation
+RandomCounter,DINT,,0,Counter for random number generation
+TempRandom,INT,,0,Temporary random value
+NewButton,INT,,0,New button to add to sequence
