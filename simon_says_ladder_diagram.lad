@@ -1,0 +1,220 @@
+(* Simon Says Game - Ladder Logic Implementation *)
+(* For Omron NX102-1100 PLC *)
+(* Phase 1: 3-Button Version *)
+
+(* ============================================================================ *)
+(* RUNG 1-5: Button Edge Detection *)
+(* ============================================================================ *)
+
+(* Rung 1: Yellow Button Edge Detection *)
+    |--[YellowButton]--[R_TRIG YellowButton_R]--|
+
+(* Rung 2: Blue Button Edge Detection *)
+    |--[BlueButton]--[R_TRIG BlueButton_R]--|
+
+(* Rung 3: Red Button Edge Detection *)
+    |--[RedButton]--[R_TRIG RedButton_R]--|
+
+(* Rung 4: Start Button Edge Detection *)
+    |--[StartButton]--[R_TRIG StartButton_R]--|
+
+(* Rung 5: Button Press Detection Logic *)
+    |--[YellowButton_R.Q]--[MOV 2 ButtonPressed]--|
+    |--[BlueButton_R.Q]---[MOV 1 ButtonPressed]--|
+    |--[RedButton_R.Q]----[MOV 0 ButtonPressed]--|
+
+(* ============================================================================ *)
+(* RUNG 6-15: STATE 0 - IDLE *)
+(* ============================================================================ *)
+
+(* Rung 6: IDLE State - Turn off all LEDs *)
+    |--[EQ GameState 0]--+--(/RedLED)--|
+                         +--(/BlueLED)--|
+                         +--(/YellowLED)--|
+                         +--(/StatusLED)--|
+
+(* Rung 7: IDLE State - Reset Variables *)
+    |--[EQ GameState 0]--+--[MOV 1 SequenceLength]--|
+                         +--[MOV 0 CurrentStep]--|
+                         +--[MOV 0 PlayerStep]--|
+
+(* Rung 8: IDLE to INIT Transition *)
+    |--[EQ GameState 0]--[StartButton_R.Q]--[MOV 1 GameState]--|
+
+(* ============================================================================ *)
+(* RUNG 9-15: STATE 1 - INIT *)
+(* ============================================================================ *)
+
+(* Rung 9: Generate Random Number *)
+    |--[EQ GameState 1]--[MUL RandomSeed 1103515245 RandomSeed]--|
+
+(* Rung 10: Add Random Offset *)
+    |--[EQ GameState 1]--[ADD RandomSeed 12345 RandomSeed]--|
+
+(* Rung 11: Get Random 0-2 *)
+    |--[EQ GameState 1]--[MOD RandomSeed 3 TempRandom]--|
+
+(* Rung 12: Store in Sequence Array *)
+    |--[EQ GameState 1]--[LE SequenceLength 20]--[MOV TempRandom SequenceArray[SequenceLength-1]]--|
+
+(* Rung 13: Reset Counters *)
+    |--[EQ GameState 1]--+--[MOV 0 CurrentStep]--|
+                         +--[MOV 0 PlayerStep]--|
+                         +--[RST FlashState]--|
+
+(* Rung 14: Transition to SHOW_SEQUENCE *)
+    |--[EQ GameState 1]--[MOV 2 GameState]--|
+
+(* Rung 15: Reset Timer *)
+    |--[EQ GameState 1]--[RST GameTimer]--|
+
+(* ============================================================================ *)
+(* RUNG 16-30: STATE 2 - SHOW_SEQUENCE *)
+(* ============================================================================ *)
+
+(* Rung 16: Status LED ON during game *)
+    |--[EQ GameState 2]--[SET StatusLED]--|
+
+(* Rung 17: Check if sequence display complete *)
+    |--[EQ GameState 2]--[GE CurrentStep SequenceLength]--+--[MOV 0 PlayerStep]--|
+                                                           +--[MOV 3 GameState]--|
+                                                           +--[RST GameTimer]--|
+
+(* Rung 18: Flash State Logic - Start Flash *)
+    |--[EQ GameState 2]--[LT CurrentStep SequenceLength]--[NOT FlashState]--[TON GameTimer FlashTime]--|
+
+(* Rung 19: Red LED Flash *)
+    |--[EQ GameState 2]--[EQ SequenceArray[CurrentStep] 0]--[NOT FlashState]--[SET RedLED]--|
+
+(* Rung 20: Blue LED Flash *)
+    |--[EQ GameState 2]--[EQ SequenceArray[CurrentStep] 1]--[NOT FlashState]--[SET BlueLED]--|
+
+(* Rung 21: Yellow LED Flash *)
+    |--[EQ GameState 2]--[EQ SequenceArray[CurrentStep] 2]--[SET YellowLED]--|
+
+(* Rung 22: End Flash Period *)
+    |--[EQ GameState 2]--[NOT FlashState]--[GameTimer.Q]--+--[SET FlashState]--|
+                                                           +--[RST GameTimer]--|
+
+(* Rung 23: Turn off LEDs during gap *)
+    |--[EQ GameState 2]--[FlashState]--+--[RST RedLED]--|
+                                       +--[RST BlueLED]--|
+                                       +--[RST YellowLED]--|
+
+(* Rung 24: Gap Timer *)
+    |--[EQ GameState 2]--[FlashState]--[TON GameTimer GapTime]--|
+
+(* Rung 25: End Gap Period *)
+    |--[EQ GameState 2]--[FlashState]--[GameTimer.Q]--+--[RST FlashState]--|
+                                                       +--[ADD CurrentStep 1 CurrentStep]--|
+                                                       +--[RST GameTimer]--|
+
+(* ============================================================================ *)
+(* RUNG 26-35: STATE 3 - WAIT_INPUT *)
+(* ============================================================================ *)
+
+(* Rung 26: Start Input Timeout *)
+    |--[EQ GameState 3]--[TON GameTimer InputTimeout]--|
+
+(* Rung 27: Visual Feedback - Red LED *)
+    |--[EQ GameState 3]--[RedButton]--[SET RedLED]--|
+    |--[EQ GameState 3]--[NOT RedButton]--[RST RedLED]--|
+
+(* Rung 28: Visual Feedback - Blue LED *)
+    |--[EQ GameState 3]--[BlueButton]--[SET BlueLED]--|
+    |--[EQ GameState 3]--[NOT BlueButton]--[RST BlueLED]--|
+
+(* Rung 29: Visual Feedback - Yellow LED *)
+    |--[EQ GameState 3]--[YellowButton]--[SET YellowLED]--|
+    |--[EQ GameState 3]--[NOT YellowButton]--[RST YellowLED]--|
+
+(* Rung 30: Button Press Transition *)
+    |--[EQ GameState 3]--[GE ButtonPressed 0]--+--[MOV 4 GameState]--|
+                                               +--[RST GameTimer]--|
+
+(* Rung 31: Timeout Transition *)
+    |--[EQ GameState 3]--[GameTimer.Q]--+--[MOV 6 GameState]--|
+                                        +--[RST GameTimer]--|
+
+(* ============================================================================ *)
+(* RUNG 32-40: STATE 4 - CHECK_INPUT *)
+(* ============================================================================ *)
+
+(* Rung 32: Turn off all LEDs *)
+    |--[EQ GameState 4]--+--[RST RedLED]--|
+                         +--[RST BlueLED]--|
+                         +--[RST YellowLED]--|
+
+(* Rung 33: Check Correct Input *)
+    |--[EQ GameState 4]--[EQ ButtonPressed SequenceArray[PlayerStep]]--[ADD PlayerStep 1 PlayerStep]--|
+
+(* Rung 34: Sequence Complete Check *)
+    |--[EQ GameState 4]--[EQ ButtonPressed SequenceArray[PlayerStep]]--[GE PlayerStep SequenceLength]--[MOV 5 GameState]--|
+
+(* Rung 35: Continue Input Check *)
+    |--[EQ GameState 4]--[EQ ButtonPressed SequenceArray[PlayerStep]]--[LT PlayerStep SequenceLength]--[MOV 3 GameState]--|
+
+(* Rung 36: Wrong Input *)
+    |--[EQ GameState 4]--[NE ButtonPressed SequenceArray[PlayerStep]]--[MOV 6 GameState]--|
+
+(* Rung 37: Clear Button Press *)
+    |--[EQ GameState 4]--[MOV -1 ButtonPressed]--|
+
+(* ============================================================================ *)
+(* RUNG 38-45: STATE 5 - SUCCESS *)
+(* ============================================================================ *)
+
+(* Rung 38: Celebration Timer *)
+    |--[EQ GameState 5]--[TON GameTimer CelebrationTime]--|
+
+(* Rung 39: Celebration LEDs *)
+    |--[EQ GameState 5]--+--[SET RedLED]--|
+                         +--[SET BlueLED]--|
+                         +--[SET YellowLED]--|
+
+(* Rung 40: Advance Level *)
+    |--[EQ GameState 5]--[GameTimer.Q]--[ADD SequenceLength 1 SequenceLength]--|
+
+(* Rung 41: Check Max Level *)
+    |--[EQ GameState 5]--[GameTimer.Q]--[GT SequenceLength 20]--[MOV 6 GameState]--|
+
+(* Rung 42: Continue Game *)
+    |--[EQ GameState 5]--[GameTimer.Q]--[LE SequenceLength 20]--[MOV 1 GameState]--|
+
+(* Rung 43: Reset Timer *)
+    |--[EQ GameState 5]--[GameTimer.Q]--[RST GameTimer]--|
+
+(* ============================================================================ *)
+(* RUNG 44-55: STATE 6 - GAME_OVER *)
+(* ============================================================================ *)
+
+(* Rung 44: Error Blink Timer *)
+    |--[EQ GameState 6]--[LT ErrorBlink 6]--[TON GameTimer T#200ms]--|
+
+(* Rung 45: Toggle LEDs *)
+    |--[EQ GameState 6]--[LT ErrorBlink 6]--[GameTimer.Q]--+--[NOT RedLED RedLED]--|
+                                                            +--[NOT BlueLED BlueLED]--|
+                                                            +--[NOT YellowLED YellowLED]--|
+
+(* Rung 46: Increment Blink Counter *)
+    |--[EQ GameState 6]--[LT ErrorBlink 6]--[GameTimer.Q]--[ADD ErrorBlink 1 ErrorBlink]--|
+
+(* Rung 47: Reset Blink Timer *)
+    |--[EQ GameState 6]--[LT ErrorBlink 6]--[GameTimer.Q]--[RST GameTimer]--|
+
+(* Rung 48: Final Error Display *)
+    |--[EQ GameState 6]--[GE ErrorBlink 6]--+--[SET RedLED]--|
+                                            +--[SET BlueLED]--|
+                                            +--[SET YellowLED]--|
+
+(* Rung 49: Final Error Timer *)
+    |--[EQ GameState 6]--[GE ErrorBlink 6]--[TON GameTimer ErrorTime]--|
+
+(* Rung 50: Return to IDLE *)
+    |--[EQ GameState 6]--[GE ErrorBlink 6]--[GameTimer.Q]--+--[MOV 0 ErrorBlink]--|
+                                                            +--[MOV 0 GameState]--|
+                                                            +--[RST GameTimer]--|
+
+(* ============================================================================ *)
+(* END OF LADDER LOGIC *)
+(* ============================================================================ *)
