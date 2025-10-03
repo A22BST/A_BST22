@@ -1,0 +1,268 @@
+# Simon Says Game Block - Detailed Implementation
+# Omron NX102 PLC - Sysmac Studio Ladder Logic
+# 
+# Self-contained game block for Simon Says functionality
+# Integrates with the modular arcade system
+
+# ============================================================================
+# SIMON SAYS GAME VARIABLES
+# ============================================================================
+
+# Game Control
+Simon_Active := B_100 (Bit, FALSE)
+Simon_Game_Over := B_101 (Bit, FALSE)
+Simon_Player_Turn := B_102 (Bit, FALSE)
+Simon_Show_Sequence := B_103 (Bit, FALSE)
+
+# Game State Machine
+Simon_State := D_100 (Data_Register, 0 to 6)
+# 0 = Game Off
+# 1 = Initialize Game
+# 2 = Generate Sequence
+# 3 = Show Sequence
+# 4 = Wait for Player Input
+# 5 = Check Player Input
+# 6 = Game Complete
+
+# Game Sequence
+Sequence_Length := D_101 (Data_Register, 1 to 20)
+Current_Step := D_102 (Data_Register, 0 to 20)
+Sequence_Data := D_103 (Data_Register, 0 to 999999)
+Player_Input_Data := D_104 (Data_Register, 0 to 999999)
+Player_Input_Step := D_105 (Data_Register, 0 to 20)
+
+# Timing Control
+Sequence_Timer := T_100 (Timer, 500ms)
+Input_Timer := T_101 (Timer, 5000ms)
+Pause_Timer := T_102 (Timer, 1000ms)
+
+# Game Statistics
+Simon_Score := D_110 (Data_Register, 0 to 9999)
+Simon_Level := D_111 (Data_Register, 1 to 20)
+Simon_Rounds := D_112 (Data_Register, 0 to 100)
+
+# ============================================================================
+# SIMON SAYS MAIN STATE MACHINE
+# ============================================================================
+
+# Rung 1: Game Activation
+|--[Current_Game EQ 0]--[System_Active]--[Simon_Active]--|
+
+# Rung 2: State Machine - Game Off
+|--[Simon_State EQ 0]--[Simon_Active]--[MOV 1]--[Simon_State]--|
+
+# Rung 3: State Machine - Initialize Game
+|--[Simon_State EQ 1]--[Initialize_Game]--[MOV 2]--[Simon_State]--|
+
+# Rung 4: State Machine - Generate Sequence
+|--[Simon_State EQ 2]--[Generate_Sequence]--[MOV 3]--[Simon_State]--|
+
+# Rung 5: State Machine - Show Sequence
+|--[Simon_State EQ 3]--[Show_Sequence_Complete]--[MOV 4]--[Simon_State]--|
+
+# Rung 6: State Machine - Wait for Player Input
+|--[Simon_State EQ 4]--[Player_Input_Complete]--[MOV 5]--[Simon_State]--|
+
+# Rung 7: State Machine - Check Player Input
+|--[Simon_State EQ 5]--[Input_Check_Complete]--[MOV 6]--[Simon_State]--|
+
+# Rung 8: State Machine - Game Complete
+|--[Simon_State EQ 6]--[Game_Complete_Action]--[MOV 0]--[Simon_State]--|
+
+# ============================================================================
+# GAME INITIALIZATION LOGIC
+# ============================================================================
+
+# Rung 9: Initialize Game Variables
+|--[Simon_State EQ 1]--[Initialize_Game]--|
+    |--[MOV 1]--[Sequence_Length]--|
+    |--[MOV 0]--[Current_Step]--|
+    |--[MOV 0]--[Player_Input_Step]--|
+    |--[MOV 0]--[Simon_Score]--|
+    |--[MOV 1]--[Simon_Level]--|
+
+# Rung 10: Reset Game Flags
+|--[Simon_State EQ 1]--[Initialize_Game]--|
+    |--[RESET Simon_Game_Over]--|
+    |--[RESET Simon_Player_Turn]--|
+    |--[RESET Simon_Show_Sequence]--|
+
+# ============================================================================
+# SEQUENCE GENERATION LOGIC
+# ============================================================================
+
+# Rung 11: Generate Random Sequence
+|--[Simon_State EQ 2]--[Generate_Sequence]--|
+    |--[Random_Generator]--[Sequence_Data]--|
+    |--[Sequence_Length]--[Validate_Sequence]--|
+
+# Rung 12: Sequence Validation
+|--[Validate_Sequence]--[MOV 3]--[Simon_State]--|
+
+# ============================================================================
+# SEQUENCE DISPLAY LOGIC
+# ============================================================================
+
+# Rung 13: Start Sequence Display
+|--[Simon_State EQ 3]--[Current_Step LT Sequence_Length]--[Simon_Show_Sequence]--|
+
+# Rung 14: Sequence Timer Control
+|--[Simon_Show_Sequence]--[Sequence_Timer]--|
+
+# Rung 15: Display Current Step
+|--[Sequence_Timer.DN]--[Display_Step]--[Current_Step]--|
+
+# Rung 16: Increment Step Counter
+|--[Display_Step]--[INC Current_Step]--|
+
+# Rung 17: Check if Sequence Complete
+|--[Current_Step GE Sequence_Length]--[Sequence_Complete]--|
+
+# Rung 18: Pause Before Player Input
+|--[Sequence_Complete]--[Pause_Timer]--[MOV 4]--[Simon_State]--|
+
+# ============================================================================
+# PLAYER INPUT LOGIC
+# ============================================================================
+
+# Rung 19: Start Player Input Phase
+|--[Simon_State EQ 4]--[Simon_Player_Turn]--[Input_Timer]--|
+
+# Rung 20: Read Player Input
+|--[Simon_Player_Turn]--[Read_Player_Input]--|
+    |--[Button_1]--[Store_Input_1]--|
+    |--[Button_2]--[Store_Input_2]--|
+    |--[Button_3]--[Store_Input_3]--|
+
+# Rung 21: Store Player Input
+|--[Store_Input_1]--[MOV 1]--[Player_Input_Data]--|
+|--[Store_Input_2]--[MOV 2]--[Player_Input_Data]--|
+|--[Store_Input_3]--[MOV 3]--[Player_Input_Data]--|
+
+# Rung 22: Increment Input Step
+|--[Read_Player_Input]--[INC Player_Input_Step]--|
+
+# Rung 23: Check Input Complete
+|--[Player_Input_Step GE Sequence_Length]--[Player_Input_Complete]--|
+
+# Rung 24: Timeout Check
+|--[Input_Timer.DN]--[Input_Timeout]--[Simon_Game_Over]--|
+
+# ============================================================================
+# INPUT VALIDATION LOGIC
+# ============================================================================
+
+# Rung 25: Compare Player Input to Sequence
+|--[Simon_State EQ 5]--[Compare_Input]--|
+    |--[Player_Input_Data]--[Sequence_Data]--[Input_Match]--|
+
+# Rung 26: Input Match Check
+|--[Input_Match]--[Correct_Input]--|
+|--[NOT Input_Match]--[Wrong_Input]--|
+
+# Rung 27: Correct Input - Continue Game
+|--[Correct_Input]--[INC Simon_Score]--[INC Sequence_Length]--[MOV 2]--[Simon_State]--|
+
+# Rung 28: Wrong Input - Game Over
+|--[Wrong_Input]--[Simon_Game_Over]--[MOV 6]--[Simon_State]--|
+
+# Rung 29: Input Timeout - Game Over
+|--[Input_Timeout]--[Simon_Game_Over]--[MOV 6]--[Simon_State]--|
+
+# ============================================================================
+# GAME COMPLETION LOGIC
+# ============================================================================
+
+# Rung 30: Game Over Actions
+|--[Simon_State EQ 6]--[Simon_Game_Over]--|
+    |--[Final_Score_Display]--|
+    |--[Game_Over_LEDs]--|
+    |--[Reset_Game_Variables]--|
+
+# Rung 31: Level Complete Actions
+|--[Simon_State EQ 6]--[NOT Simon_Game_Over]--|
+    |--[INC Simon_Level]--|
+    |--[Level_Complete_Display]--|
+    |--[Continue_Game]--[MOV 2]--[Simon_State]--|
+
+# ============================================================================
+# OUTPUT CONTROL FOR SIMON SAYS
+# ============================================================================
+
+# Rung 32: LED Control During Sequence Display
+|--[Simon_Show_Sequence]--[Display_Step]--[LED_Control]--|
+    |--[Current_Step]--[LED_1]--|
+    |--[Current_Step]--[LED_2]--|
+    |--[Current_Step]--[LED_3]--|
+
+# Rung 33: LED Control During Player Input
+|--[Simon_Player_Turn]--[Player_Input_Active]--[LED_Control]--|
+    |--[Button_1]--[LED_1]--|
+    |--[Button_2]--[LED_2]--|
+    |--[Button_3]--[LED_3]--|
+
+# Rung 34: Game Over LED Pattern
+|--[Simon_Game_Over]--[Game_Over_Pattern]--|
+    |--[Blink_Timer]--[LED_1]--|
+    |--[Blink_Timer]--[LED_2]--|
+    |--[Blink_Timer]--[LED_3]--|
+
+# ============================================================================
+# SCORE AND LEVEL MANAGEMENT
+# ============================================================================
+
+# Rung 35: Score Calculation
+|--[Correct_Input]--[Score_Calculation]--|
+    |--[Sequence_Length]--[MUL 10]--[ADD Simon_Score]--[Simon_Score]--|
+
+# Rung 36: Level Progression
+|--[Simon_Score]--[Level_Check]--[INC Simon_Level]--|
+
+# Rung 37: High Score Check
+|--[Simon_Score]--[High_Score_Check]--[Update_High_Score]--|
+
+# ============================================================================
+# INTEGRATION WITH MAIN SYSTEM
+# ============================================================================
+
+# Rung 38: Game Status Output
+|--[Simon_Active]--[Game_Status_Output]--|
+|--[Simon_Game_Over]--[Game_Over_Status]--|
+|--[Simon_Score]--[Score_Output]--|
+
+# Rung 39: Return Control to Main System
+|--[Simon_State EQ 0]--[Return_Control]--[Main_System]--|
+
+# ============================================================================
+# IMPLEMENTATION NOTES
+# ============================================================================
+
+# 1. STATE MACHINE DESIGN:
+#    - Clear state transitions
+#    - Each state has specific actions
+#    - Easy to debug and modify
+#    - Prevents invalid state combinations
+
+# 2. SEQUENCE GENERATION:
+#    - Uses random generator from main system
+#    - Validates sequence for game balance
+#    - Stores sequence in compact format
+#    - Easy to modify sequence length
+
+# 3. INPUT HANDLING:
+#    - Debounced button inputs
+#    - Timeout protection
+#    - Input validation
+#    - Clear feedback to player
+
+# 4. OUTPUT CONTROL:
+#    - Synchronized LED control
+#    - Clear visual feedback
+#    - Game over patterns
+#    - Integration with main output mapper
+
+# 5. SCORING SYSTEM:
+#    - Progressive difficulty
+#    - Level-based scoring
+#    - High score tracking
+#    - Performance metrics

@@ -1,0 +1,122 @@
+# Continuous Random Generator for 3 Outputs
+# Omron NX102 PLC - Sysmac Studio Ladder Logic
+# 
+# This program implements a continuous random generator that cycles through 3 outputs
+# Uses a timer-based approach with modulo arithmetic for even distribution
+
+# ============================================================================
+# CONFIGURATION AND VARIABLES
+# ============================================================================
+
+# Timer Configuration
+# Timer_1: Base timer for random generation (100ms intervals)
+Timer_1 := T_1 (Timer, 100ms, Auto_Reset)
+
+# Counter for random sequence
+RandomCounter := C_1 (Counter, 0 to 999, Auto_Reset)
+
+# Output selection (0, 1, or 2)
+OutputSelect := D_1 (Data_Register, 0 to 2)
+
+# Output states
+Output1_State := B_1 (Bit, FALSE)
+Output2_State := B_2 (Bit, FALSE) 
+Output3_State := B_3 (Bit, FALSE)
+
+# Control bits
+RandomGen_Enable := B_10 (Bit, FALSE)
+RandomGen_Running := B_11 (Bit, FALSE)
+
+# ============================================================================
+# MAIN RANDOM GENERATOR LOGIC
+# ============================================================================
+
+# Rung 1: Enable Random Generator
+RandomGen_Enable := TRUE
+
+# Rung 2: Timer for continuous operation
+|--[RandomGen_Enable]--[Timer_1]--|
+
+# Rung 3: Increment counter on timer completion
+|--[Timer_1.DN]--[RandomCounter]--|
+
+# Rung 4: Calculate output selection (modulo 3)
+|--[RandomCounter]--[MOV(Modulo 3)]--[OutputSelect]--|
+
+# Rung 5: Set RandomGen_Running flag
+|--[RandomGen_Enable]--[RandomGen_Running]--|
+
+# ============================================================================
+# OUTPUT SELECTION LOGIC
+# ============================================================================
+
+# Rung 6: Output 1 (when OutputSelect = 0)
+|--[RandomGen_Running]--[OutputSelect EQ 0]--[Output1_State]--|
+
+# Rung 7: Output 2 (when OutputSelect = 1)  
+|--[RandomGen_Running]--[OutputSelect EQ 1]--[Output2_State]--|
+
+# Rung 8: Output 3 (when OutputSelect = 2)
+|--[RandomGen_Running]--[OutputSelect EQ 2]--[Output3_State]--|
+
+# ============================================================================
+# SAFETY AND RESET LOGIC
+# ============================================================================
+
+# Rung 9: Emergency stop - turn off all outputs
+|--[Emergency_Stop]--[Reset_All_Outputs]--|
+
+# Rung 10: Reset all outputs when disabled
+|--[NOT RandomGen_Enable]--[Reset_All_Outputs]--|
+
+# ============================================================================
+# MODULAR OUTPUT MAPPING
+# ============================================================================
+
+# Rung 11: Map to physical outputs (safety interlocked)
+|--[Output1_State]--[Safety_Interlock]--[Physical_Output_1]--|
+
+# Rung 12: Map to physical outputs (safety interlocked)
+|--[Output2_State]--[Safety_Interlock]--[Physical_Output_2]--|
+
+# Rung 13: Map to physical outputs (safety interlocked)
+|--[Output3_State]--[Safety_Interlock]--[Physical_Output_3]--|
+
+# ============================================================================
+# STATUS INDICATORS
+# ============================================================================
+
+# Rung 14: Status LED for random generator running
+|--[RandomGen_Running]--[Status_LED]--|
+
+# Rung 15: Output selection display (optional)
+|--[OutputSelect]--[Display_Register]--|
+
+# ============================================================================
+# NOTES AND IMPLEMENTATION GUIDELINES
+# ============================================================================
+
+# 1. Timer Configuration:
+#    - Timer_1: 100ms base interval for smooth operation
+#    - Adjust timing based on required response speed
+#    - Consider using system clock for more random distribution
+
+# 2. Counter Configuration:
+#    - RandomCounter: 0-999 range provides good distribution
+#    - Modulo 3 operation ensures even distribution across outputs
+#    - Auto-reset prevents overflow issues
+
+# 3. Safety Considerations:
+#    - Always include emergency stop functionality
+#    - Use safety interlocks for physical outputs
+#    - Implement proper reset logic when disabled
+
+# 4. Integration with Game System:
+#    - This generator can be used as a base for game logic
+#    - Output states can be mapped to game-specific functions
+#    - Modular design allows easy integration with other game modes
+
+# 5. Performance Optimization:
+#    - Consider using system clock instead of timer for better randomness
+#    - Implement seed-based random generation for true randomness
+#    - Add pause/resume functionality for game integration

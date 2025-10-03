@@ -1,0 +1,277 @@
+# Output Mapper - Safety and Conflict Resolution
+# Omron NX102 PLC - Sysmac Studio Ladder Logic
+# 
+# Centralized output control system for the modular arcade
+# Prevents conflicts between different game modes and ensures safety
+
+# ============================================================================
+# OUTPUT MAPPER VARIABLES
+# ============================================================================
+
+# Physical Outputs
+Physical_LED_1 := B_200 (Bit, FALSE)
+Physical_LED_2 := B_201 (Bit, FALSE)
+Physical_LED_3 := B_202 (Bit, FALSE)
+
+# Game Mode Outputs
+Simon_Output_1 := B_210 (Bit, FALSE)
+Simon_Output_2 := B_211 (Bit, FALSE)
+Simon_Output_3 := B_212 (Bit, FALSE)
+
+Reaction_Output_1 := B_220 (Bit, FALSE)
+Reaction_Output_2 := B_221 (Bit, FALSE)
+Reaction_Output_3 := B_222 (Bit, FALSE)
+
+Idle_Output_1 := B_230 (Bit, FALSE)
+Idle_Output_2 := B_231 (Bit, FALSE)
+Idle_Output_3 := B_232 (Bit, FALSE)
+
+# System Status Outputs
+Status_Output_1 := B_240 (Bit, FALSE)
+Status_Output_2 := B_241 (Bit, FALSE)
+Status_Output_3 := B_242 (Bit, FALSE)
+
+# Emergency Outputs
+Emergency_Output_1 := B_250 (Bit, FALSE)
+Emergency_Output_2 := B_251 (Bit, FALSE)
+Emergency_Output_3 := B_252 (Bit, FALSE)
+
+# Output Priority Control
+Output_Priority := D_200 (Data_Register, 0 to 3)
+# 0 = No Output (System Off)
+# 1 = Game Output (Active Game)
+# 2 = Status Output (System Status)
+# 3 = Emergency Output (Emergency Stop)
+
+# Safety Interlocks
+Safety_Interlock := B_260 (Bit, TRUE)
+Output_Conflict := B_261 (Bit, FALSE)
+System_Healthy := B_262 (Bit, TRUE)
+
+# ============================================================================
+# PRIORITY CONTROL LOGIC
+# ============================================================================
+
+# Rung 1: Emergency Stop - Highest Priority
+|--[Emergency_Stop]--[MOV 3]--[Output_Priority]--|
+
+# Rung 2: System Health Check - Second Priority
+|--[NOT System_Healthy]--[MOV 3]--[Output_Priority]--|
+
+# Rung 3: Game Running - Third Priority
+|--[Game_Running]--[System_Healthy]--[MOV 1]--[Output_Priority]--|
+
+# Rung 4: Status Mode - Fourth Priority
+|--[NOT Game_Running]--[System_Healthy]--[MOV 2]--[Output_Priority]--|
+
+# Rung 5: System Off - Lowest Priority
+|--[NOT System_Active]--[MOV 0]--[Output_Priority]--|
+
+# ============================================================================
+# OUTPUT CONFLICT DETECTION
+# ============================================================================
+
+# Rung 6: Detect Multiple Game Outputs
+|--[Simon_Output_1]--[Reaction_Output_1]--[Output_Conflict]--|
+|--[Simon_Output_1]--[Idle_Output_1]--[Output_Conflict]--|
+|--[Reaction_Output_1]--[Idle_Output_1]--[Output_Conflict]--|
+
+# Rung 7: Detect Multiple Game Outputs (Output 2)
+|--[Simon_Output_2]--[Reaction_Output_2]--[Output_Conflict]--|
+|--[Simon_Output_2]--[Idle_Output_2]--[Output_Conflict]--|
+|--[Reaction_Output_2]--[Idle_Output_2]--[Output_Conflict]--|
+
+# Rung 8: Detect Multiple Game Outputs (Output 3)
+|--[Simon_Output_3]--[Reaction_Output_3]--[Output_Conflict]--|
+|--[Simon_Output_3]--[Idle_Output_3]--[Output_Conflict]--|
+|--[Reaction_Output_3]--[Idle_Output_3]--[Output_Conflict]--|
+
+# Rung 9: Conflict Resolution - Force Emergency Mode
+|--[Output_Conflict]--[MOV 3]--[Output_Priority]--|
+
+# ============================================================================
+# SAFETY INTERLOCK LOGIC
+# ============================================================================
+
+# Rung 10: Safety Interlock Check
+|--[Safety_Interlock]--[System_Healthy]--[NOT Output_Conflict]--[Safety_OK]--|
+
+# Rung 11: Safety Interlock Failure
+|--[NOT Safety_Interlock]--[Safety_Failure]--[MOV 3]--[Output_Priority]--|
+
+# Rung 12: System Health Check
+|--[Watchdog_Timer]--[System_Health_Check]--[System_Healthy]--|
+
+# ============================================================================
+# OUTPUT MAPPING LOGIC
+# ============================================================================
+
+# Rung 13: Output 1 - Priority Control
+|--[Output_Priority EQ 0]--[RESET Physical_LED_1]--|
+|--[Output_Priority EQ 1]--[Game_Output_1]--[Physical_LED_1]--|
+|--[Output_Priority EQ 2]--[Status_Output_1]--[Physical_LED_1]--|
+|--[Output_Priority EQ 3]--[Emergency_Output_1]--[Physical_LED_1]--|
+
+# Rung 14: Output 2 - Priority Control
+|--[Output_Priority EQ 0]--[RESET Physical_LED_2]--|
+|--[Output_Priority EQ 1]--[Game_Output_2]--[Physical_LED_2]--|
+|--[Output_Priority EQ 2]--[Status_Output_2]--[Physical_LED_2]--|
+|--[Output_Priority EQ 3]--[Emergency_Output_2]--[Physical_LED_2]--|
+
+# Rung 15: Output 3 - Priority Control
+|--[Output_Priority EQ 0]--[RESET Physical_LED_3]--|
+|--[Output_Priority EQ 1]--[Game_Output_3]--[Physical_LED_3]--|
+|--[Output_Priority EQ 2]--[Status_Output_3]--[Physical_LED_3]--|
+|--[Output_Priority EQ 3]--[Emergency_Output_3]--[Physical_LED_3]--|
+
+# ============================================================================
+# GAME OUTPUT ROUTING
+# ============================================================================
+
+# Rung 16: Game Output 1 - Mode Selection
+|--[Current_Game EQ 0]--[Simon_Output_1]--[Game_Output_1]--|
+|--[Current_Game EQ 1]--[Reaction_Output_1]--[Game_Output_1]--|
+|--[Current_Game EQ 2]--[Idle_Output_1]--[Game_Output_1]--|
+
+# Rung 17: Game Output 2 - Mode Selection
+|--[Current_Game EQ 0]--[Simon_Output_2]--[Game_Output_2]--|
+|--[Current_Game EQ 1]--[Reaction_Output_2]--[Game_Output_2]--|
+|--[Current_Game EQ 2]--[Idle_Output_2]--[Game_Output_2]--|
+
+# Rung 18: Game Output 3 - Mode Selection
+|--[Current_Game EQ 0]--[Simon_Output_3]--[Game_Output_3]--|
+|--[Current_Game EQ 1]--[Reaction_Output_3]--[Game_Output_3]--|
+|--[Current_Game EQ 2]--[Idle_Output_3]--[Game_Output_3]--|
+
+# ============================================================================
+# STATUS OUTPUT LOGIC
+# ============================================================================
+
+# Rung 19: Status Output 1 - System Status
+|--[System_Active]--[Status_Output_1]--|
+|--[Game_Running]--[Status_Output_1]--|
+|--[Mode_Locked]--[Status_Output_1]--|
+
+# Rung 20: Status Output 2 - Game Status
+|--[Current_Game EQ 0]--[Simon_Active]--[Status_Output_2]--|
+|--[Current_Game EQ 1]--[Reaction_Active]--[Status_Output_2]--|
+|--[Current_Game EQ 2]--[Idle_Active]--[Status_Output_2]--|
+
+# Rung 21: Status Output 3 - Error Status
+|--[Output_Conflict]--[Status_Output_3]--|
+|--[NOT System_Healthy]--[Status_Output_3]--|
+|--[Safety_Failure]--[Status_Output_3]--|
+
+# ============================================================================
+# EMERGENCY OUTPUT LOGIC
+# ============================================================================
+
+# Rung 22: Emergency Output 1 - Emergency Stop
+|--[Emergency_Stop]--[Emergency_Output_1]--|
+
+# Rung 23: Emergency Output 2 - System Failure
+|--[NOT System_Healthy]--[Emergency_Output_2]--|
+
+# Rung 24: Emergency Output 3 - Safety Failure
+|--[Safety_Failure]--[Emergency_Output_3]--|
+
+# ============================================================================
+# OUTPUT PROTECTION AND LIMITING
+# ============================================================================
+
+# Rung 25: Output Current Limiting
+|--[Physical_LED_1]--[Current_Limit_1]--[LED_1_Safe]--|
+|--[Physical_LED_2]--[Current_Limit_2]--[LED_2_Safe]--|
+|--[Physical_LED_3]--[Current_Limit_3]--[LED_3_Safe]--|
+
+# Rung 26: Output Duty Cycle Control
+|--[LED_1_Safe]--[Duty_Cycle_Control]--[LED_1_Final]--|
+|--[LED_2_Safe]--[Duty_Cycle_Control]--[LED_2_Final]--|
+|--[LED_3_Safe]--[Duty_Cycle_Control]--[LED_3_Final]--|
+
+# Rung 27: Output Temperature Protection
+|--[LED_1_Final]--[Temperature_Check]--[LED_1_Output]--|
+|--[LED_2_Final]--[Temperature_Check]--[LED_2_Output]--|
+|--[LED_3_Final]--[Temperature_Check]--[LED_3_Output]--|
+
+# ============================================================================
+# DIAGNOSTIC AND MONITORING
+# ============================================================================
+
+# Rung 28: Output Status Monitoring
+|--[Physical_LED_1]--[Output_Status_1]--|
+|--[Physical_LED_2]--[Output_Status_2]--|
+|--[Physical_LED_3]--[Output_Status_3]--|
+
+# Rung 29: Output Conflict Logging
+|--[Output_Conflict]--[Log_Conflict]--[Conflict_Counter]--|
+
+# Rung 30: Safety Interlock Monitoring
+|--[Safety_Failure]--[Log_Safety_Failure]--[Safety_Counter]--|
+
+# Rung 31: System Health Monitoring
+|--[NOT System_Healthy]--[Log_System_Failure]--[System_Failure_Counter]--|
+
+# ============================================================================
+# OUTPUT TESTING AND CALIBRATION
+# ============================================================================
+
+# Rung 32: Output Test Mode
+|--[Test_Mode]--[Output_Test_Sequence]--|
+    |--[Test_Timer]--[LED_1_Output]--|
+    |--[Test_Timer]--[LED_2_Output]--|
+    |--[Test_Timer]--[LED_3_Output]--|
+
+# Rung 33: Output Calibration
+|--[Calibration_Mode]--[Output_Calibration]--|
+    |--[Cal_Output_1]--[LED_1_Output]--|
+    |--[Cal_Output_2]--[LED_2_Output]--|
+    |--[Cal_Output_3]--[LED_3_Output]--|
+
+# ============================================================================
+# INTEGRATION WITH MAIN SYSTEM
+# ============================================================================
+
+# Rung 34: Output Mapper Status
+|--[Output_Priority]--[Mapper_Status]--|
+|--[Safety_Interlock]--[Safety_Status]--|
+|--[Output_Conflict]--[Conflict_Status]--|
+
+# Rung 35: Return Status to Main System
+|--[Mapper_Status]--[Main_System_Status]--|
+|--[Safety_Status]--[Main_System_Status]--|
+|--[Conflict_Status]--[Main_System_Status]--|
+
+# ============================================================================
+# IMPLEMENTATION NOTES
+# ============================================================================
+
+# 1. PRIORITY SYSTEM:
+#    - Clear hierarchy of output control
+#    - Emergency stop always takes precedence
+#    - Game outputs have priority over status outputs
+#    - System off state prevents all outputs
+
+# 2. SAFETY FEATURES:
+#    - Safety interlocks prevent unsafe operation
+#    - Output conflict detection and resolution
+#    - System health monitoring
+#    - Emergency stop functionality
+
+# 3. OUTPUT PROTECTION:
+#    - Current limiting for LED protection
+#    - Duty cycle control for longevity
+#    - Temperature protection for thermal safety
+#    - Output testing and calibration modes
+
+# 4. DIAGNOSTIC CAPABILITIES:
+#    - Output status monitoring
+#    - Conflict logging and counting
+#    - Safety failure tracking
+#    - System health monitoring
+
+# 5. INTEGRATION:
+#    - Clear interface with main system
+#    - Status reporting to main system
+#    - Modular design for easy expansion
+#    - Compatible with all game modes

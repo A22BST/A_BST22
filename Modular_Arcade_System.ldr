@@ -1,0 +1,225 @@
+# Modular Arcade System for Omron NX102 PLC
+# Sysmac Studio Ladder Logic Implementation
+# 
+# System Architecture:
+# 1. Mode Manager - Handles selector switch and lock-in/start button
+# 2. Game Blocks - Self-contained ladder logic for each game
+# 3. Output Mapper - Routes control to LEDs safely, avoids conflicts
+
+# ============================================================================
+# SYSTEM CONFIGURATION AND VARIABLES
+# ============================================================================
+
+# Mode Selection (3-way selector switch)
+Mode_Selector := D_10 (Data_Register, 0 to 2)
+# 0 = Simon Says Mode
+# 1 = Reaction Game Mode  
+# 2 = Idle Mode
+
+# Control Inputs
+LockIn_Button := B_20 (Bit, FALSE)
+Start_Button := B_21 (Bit, FALSE)
+Emergency_Stop := B_22 (Bit, FALSE)
+
+# Game Inputs (3 illuminated pushbuttons)
+Button_1 := B_30 (Bit, FALSE)
+Button_2 := B_31 (Bit, FALSE)
+Button_3 := B_32 (Bit, FALSE)
+
+# Game Outputs (LEDs for buttons)
+LED_1 := B_40 (Bit, FALSE)
+LED_2 := B_41 (Bit, FALSE)
+LED_3 := B_42 (Bit, FALSE)
+
+# System Status
+System_Active := B_50 (Bit, FALSE)
+Game_Running := B_51 (Bit, FALSE)
+Mode_Locked := B_52 (Bit, FALSE)
+
+# Game State Registers
+Current_Game := D_20 (Data_Register, 0 to 2)
+Game_State := D_21 (Data_Register, 0 to 10)
+Score := D_22 (Data_Register, 0 to 9999)
+
+# ============================================================================
+# MODE MANAGER - PHASE 1
+# ============================================================================
+
+# Rung 1: Read mode selector switch
+|--[Mode_Selector_Input]--[Mode_Selector]--|
+
+# Rung 2: Lock-in button logic (debounced)
+|--[LockIn_Button]--[Debounce_Timer]--[Mode_Locked]--|
+
+# Rung 3: Start button logic (only when mode is locked)
+|--[Mode_Locked]--[Start_Button]--[Game_Running]--|
+
+# Rung 4: System active when game is running
+|--[Game_Running]--[System_Active]--|
+
+# Rung 5: Emergency stop - reset all states
+|--[Emergency_Stop]--[Reset_All_States]--|
+
+# ============================================================================
+# GAME BLOCK - SIMON SAYS
+# ============================================================================
+
+# Simon Says Game Variables
+Simon_Sequence := D_30 (Data_Register, 0 to 999)
+Simon_Step := D_31 (Data_Register, 0 to 20)
+Simon_Player_Input := D_32 (Data_Register, 0 to 20)
+Simon_Game_State := D_33 (Data_Register, 0 to 5)
+# 0 = Waiting to start
+# 1 = Showing sequence
+# 2 = Player input phase
+# 3 = Checking input
+# 4 = Game over (success)
+# 5 = Game over (failure)
+
+# Rung 6: Simon Says - Game initialization
+|--[Current_Game EQ 0]--[System_Active]--[Initialize_Simon]--|
+
+# Rung 7: Simon Says - Sequence generation
+|--[Simon_Game_State EQ 0]--[Generate_Sequence]--[Simon_Sequence]--|
+
+# Rung 8: Simon Says - Show sequence phase
+|--[Simon_Game_State EQ 1]--[Show_Sequence_Timer]--[LED_Control]--|
+
+# Rung 9: Simon Says - Player input phase
+|--[Simon_Game_State EQ 2]--[Read_Player_Input]--[Simon_Player_Input]--|
+
+# Rung 10: Simon Says - Input validation
+|--[Simon_Game_State EQ 3]--[Validate_Input]--[Game_State]--|
+
+# ============================================================================
+# GAME BLOCK - REACTION GAME
+# ============================================================================
+
+# Reaction Game Variables
+Reaction_Timer := T_10 (Timer, 0 to 5000ms)
+Reaction_Start_Time := D_40 (Data_Register, 0 to 9999)
+Reaction_End_Time := D_41 (Data_Register, 0 to 9999)
+Reaction_Score := D_42 (Data_Register, 0 to 9999)
+Reaction_Game_State := D_43 (Data_Register, 0 to 3)
+# 0 = Waiting to start
+# 1 = Random delay phase
+# 2 = Reaction phase
+# 3 = Score calculation
+
+# Rung 11: Reaction Game - Initialization
+|--[Current_Game EQ 1]--[System_Active]--[Initialize_Reaction]--|
+
+# Rung 12: Reaction Game - Random delay
+|--[Reaction_Game_State EQ 1]--[Random_Delay_Timer]--[Reaction_Timer]--|
+
+# Rung 13: Reaction Game - Light activation
+|--[Reaction_Timer.DN]--[Reaction_Game_State EQ 1]--[Activate_Target_LED]--|
+
+# Rung 14: Reaction Game - Player reaction
+|--[Reaction_Game_State EQ 2]--[Read_Reaction_Input]--[Reaction_End_Time]--|
+
+# Rung 15: Reaction Game - Score calculation
+|--[Reaction_Game_State EQ 3]--[Calculate_Score]--[Reaction_Score]--|
+
+# ============================================================================
+# GAME BLOCK - IDLE MODE
+# ============================================================================
+
+# Rung 16: Idle Mode - System standby
+|--[Current_Game EQ 2]--[Idle_Mode_Active]--[Standby_LEDs]--|
+
+# Rung 17: Idle Mode - Continuous random generator
+|--[Idle_Mode_Active]--[Random_Generator]--[LED_1]--|
+|--[Idle_Mode_Active]--[Random_Generator]--[LED_2]--|
+|--[Idle_Mode_Active]--[Random_Generator]--[LED_3]--|
+
+# ============================================================================
+# OUTPUT MAPPER - SAFETY AND CONFLICT RESOLUTION
+# ============================================================================
+
+# Output Priority System
+Output_Priority := D_50 (Data_Register, 0 to 3)
+# 0 = No output
+# 1 = Game output
+# 2 = Status output
+# 3 = Emergency output
+
+# Rung 18: Output 1 - Priority control
+|--[Output_Priority EQ 1]--[Game_Output_1]--[LED_1]--|
+|--[Output_Priority EQ 2]--[Status_Output_1]--[LED_1]--|
+|--[Output_Priority EQ 3]--[Emergency_Output_1]--[LED_1]--|
+
+# Rung 19: Output 2 - Priority control
+|--[Output_Priority EQ 1]--[Game_Output_2]--[LED_2]--|
+|--[Output_Priority EQ 2]--[Status_Output_2]--[LED_2]--|
+|--[Output_Priority EQ 3]--[Emergency_Output_2]--[LED_2]--|
+
+# Rung 20: Output 3 - Priority control
+|--[Output_Priority EQ 1]--[Game_Output_3]--[LED_3]--|
+|--[Output_Priority EQ 2]--[Status_Output_3]--[LED_3]--|
+|--[Output_Priority EQ 3]--[Emergency_Output_3]--[LED_3]--|
+
+# ============================================================================
+# SAFETY INTERLOCKS AND EMERGENCY SYSTEMS
+# ============================================================================
+
+# Rung 21: Emergency stop - immediate LED shutdown
+|--[Emergency_Stop]--[Output_Priority]--[MOV 3]--|
+
+# Rung 22: Safety interlock - prevent conflicting outputs
+|--[Safety_Interlock]--[Output_Conflict_Check]--[Output_Priority]--|
+
+# Rung 23: Watchdog timer - system health check
+|--[Watchdog_Timer]--[System_Health_Check]--[System_Active]--|
+
+# ============================================================================
+# STATUS AND DIAGNOSTICS
+# ============================================================================
+
+# Rung 24: System status indicators
+|--[System_Active]--[System_Status_LED]--|
+|--[Game_Running]--[Game_Status_LED]--|
+|--[Mode_Locked]--[Mode_Status_LED]--|
+
+# Rung 25: Score display
+|--[Score]--[Score_Display]--|
+|--[Reaction_Score]--[Reaction_Display]--|
+
+# Rung 26: Game state display
+|--[Game_State]--[State_Display]--|
+|--[Simon_Game_State]--[Simon_State_Display]--|
+|--[Reaction_Game_State]--[Reaction_State_Display]--|
+
+# ============================================================================
+# IMPLEMENTATION NOTES
+# ============================================================================
+
+# 1. MODULAR DESIGN PRINCIPLES:
+#    - Each game block is self-contained
+#    - Clear interfaces between components
+#    - Easy to add new game modes
+#    - Centralized output control
+
+# 2. SAFETY CONSIDERATIONS:
+#    - Emergency stop functionality
+#    - Output conflict resolution
+#    - Watchdog timer for system health
+#    - Safety interlocks for all outputs
+
+# 3. SCALABILITY:
+#    - Add new games by creating new game blocks
+#    - Output mapper handles additional outputs
+#    - Mode manager can accommodate more modes
+#    - Clear separation of concerns
+
+# 4. DEBUGGING AND MAINTENANCE:
+#    - Status indicators for all major states
+#    - Score and state displays
+#    - Diagnostic outputs for troubleshooting
+#    - Clear variable naming conventions
+
+# 5. INTEGRATION WITH EXISTING RANDOM GENERATOR:
+#    - Random generator used in idle mode
+#    - Can be called by other game modes
+#    - Maintains continuity across mode switches
+#    - Provides consistent random behavior
