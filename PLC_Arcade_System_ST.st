@@ -1,22 +1,25 @@
-PROGRAM PLC_Arcade_System
-VAR
+// Sysmac Studio Structured Text - PLC Arcade System
+// Omron NX102 PLC Implementation
+
+// Global Variables Declaration
+VAR_GLOBAL
     // ============================================================================
     // INPUT MAPPING (Contacts)
     // ============================================================================
-    IBTN_R: BOOL;       // Red button - DI0
-    IBTN_B: BOOL;       // Blue button - DI2
-    IBTN_Y: BOOL;       // Yellow button - DI4
-    ISEL_LT: BOOL;      // Simon Says selector - DI3 (Yellow wire)
-    ISEL_R: BOOL;       // Reaction Game selector - DI5 (Green wire)
-    IBTN_M: BOOL;       // Main button - DI1 (Brown wire)
+    IBTN_R AT %IX0.0: BOOL;      // Red button - DI0
+    IBTN_B AT %IX0.2: BOOL;      // Blue button - DI2
+    IBTN_Y AT %IX0.4: BOOL;      // Yellow button - DI4
+    ISEL_LT AT %IX0.3: BOOL;     // Simon Says selector - DI3 (Yellow wire)
+    ISEL_R AT %IX0.5: BOOL;      // Reaction Game selector - DI5 (Green wire)
+    IBTN_M AT %IX0.1: BOOL;      // Main button - DI1 (Brown wire)
     
     // ============================================================================
     // OUTPUT MAPPING (LEDs)
     // ============================================================================
-    OLED_R: BOOL;       // Red LED - DO1
-    OLED_B: BOOL;       // Blue LED - DO3
-    OLED_Y: BOOL;       // Yellow LED - DO5
-    OLED_MAIN: BOOL;    // Main LED - DO0 (White wire)
+    OLED_R AT %QX0.1: BOOL;      // Red LED - DO1
+    OLED_B AT %QX0.3: BOOL;      // Blue LED - DO3
+    OLED_Y AT %QX0.5: BOOL;      // Yellow LED - DO5
+    OLED_MAIN AT %QX0.0: BOOL;   // Main LED - DO0 (White wire)
     
     // ============================================================================
     // SYSTEM CONTROL VARIABLES
@@ -49,7 +52,7 @@ VAR
     PrevBtnM: BOOL := FALSE;
     
     // ============================================================================
-    // DEBOUNCE TIMERS
+    // DEBOUNCE TIMERS (Sysmac Studio TON)
     // ============================================================================
     DebounceTimer: TON;
     ModeLockTimer: TON;
@@ -132,7 +135,7 @@ VAR
     EmergencyOut3: BOOL := FALSE;
     
     // ============================================================================
-    // TIMING VARIABLES
+    // TIMING VARIABLES (Sysmac Studio TON)
     // ============================================================================
     SystemTimer: TON;
     BlinkTimer: TON;
@@ -150,13 +153,8 @@ END_VAR
 // MAIN PROGRAM LOGIC
 // ============================================================================
 
-// Input Mapping
-IBTN_R := NOT DI0;      // Red button - DI0 (inverted if normally closed)
-IBTN_B := NOT DI2;      // Blue button - DI2
-IBTN_Y := NOT DI4;      // Yellow button - DI4
-ISEL_LT := NOT DI3;     // Simon Says selector - DI3
-ISEL_R := NOT DI5;      // Reaction Game selector - DI5
-IBTN_M := NOT DI1;      // Main button - DI1
+// Note: Input mapping is done directly in VAR_GLOBAL with AT %IX addresses
+// No additional mapping needed - inputs are automatically read from hardware
 
 // Button Edge Detection
 BtnR_Rising := IBTN_R AND NOT PrevBtnR;
@@ -169,7 +167,7 @@ PrevBtnB := IBTN_B;
 PrevBtnY := IBTN_Y;
 PrevBtnM := IBTN_M;
 
-// Button Debouncing
+// Button Debouncing (Sysmac Studio TON syntax)
 DebounceTimer(IN := IBTN_R OR IBTN_B OR IBTN_Y OR IBTN_M, PT := T#50MS);
 
 IF DebounceTimer.Q THEN
@@ -177,6 +175,7 @@ IF DebounceTimer.Q THEN
     BtnB_State := IBTN_B;
     BtnY_State := IBTN_Y;
     BtnM_State := IBTN_M;
+    DebounceTimer(IN := FALSE, PT := T#0MS);  // Reset timer
 END_IF;
 
 // Mode Selection Logic
@@ -218,12 +217,12 @@ END_IF;
 
 RandomGenActive := SystemActive;
 
-// Random Generator Timer
+// Random Generator Timer (Sysmac Studio TON syntax)
 SystemTimer(IN := RandomGenActive, PT := T#100MS);
 
 // Increment Counter
 IF SystemTimer.Q THEN
-    SystemTimer(IN := FALSE, PT := T#0MS);
+    SystemTimer(IN := FALSE, PT := T#0MS);  // Reset timer
     RandomCounter := RandomCounter + 1;
     IF RandomCounter >= 1000 THEN
         RandomCounter := 0;
@@ -274,13 +273,13 @@ CASE SimonState OF
         IF CurrentStep < SequenceLength THEN
             SimonSequenceTimer(IN := TRUE, PT := T#500MS);
             IF SimonSequenceTimer.Q THEN
-                SimonSequenceTimer(IN := FALSE, PT := T#0MS);
+                SimonSequenceTimer(IN := FALSE, PT := T#0MS);  // Reset timer
                 CurrentStep := CurrentStep + 1;
             END_IF;
         ELSE
             SimonPauseTimer(IN := TRUE, PT := T#1000MS);
             IF SimonPauseTimer.Q THEN
-                SimonPauseTimer(IN := FALSE, PT := T#0MS);
+                SimonPauseTimer(IN := FALSE, PT := T#0MS);  // Reset timer
                 CurrentStep := 0;
                 PlayerInputStep := 0;
                 SimonState := 4;
@@ -328,7 +327,7 @@ CASE SimonState OF
         SimonState := 6;
         
     6:  // Game Complete
-        SimonInputTimer(IN := FALSE, PT := T#0MS);
+        SimonInputTimer(IN := FALSE, PT := T#0MS);  // Reset timer
         IF NOT SimonActive THEN
             SimonState := 0;
         END_IF;
@@ -362,7 +361,7 @@ CASE ReactionState OF
     1:  // Wait Phase
         ReactionWaitTimer(IN := TRUE, PT := T#2000MS + (RandomCounter MOD 3000MS));
         IF ReactionWaitTimer.Q THEN
-            ReactionWaitTimer(IN := FALSE, PT := T#0MS);
+            ReactionWaitTimer(IN := FALSE, PT := T#0MS);  // Reset timer
             ReactionTarget := (RandomCounter MOD 3) + 1;
             ReactionState := 2;
         END_IF;
@@ -472,11 +471,9 @@ CASE OutputPriority OF
         OLED_MAIN := FALSE;
 END_CASE;
 
-// Output Mapping to Physical DO
-DO1 := OLED_R;
-DO3 := OLED_B;
-DO5 := OLED_Y;
-DO0 := OLED_MAIN;
+// Note: Output mapping is done directly in VAR_GLOBAL with AT %QX addresses
+// No additional mapping needed - outputs are automatically written to hardware
+// OLED_R AT %QX0.1, OLED_B AT %QX0.3, OLED_Y AT %QX0.5, OLED_MAIN AT %QX0.0
 
 // ============================================================================
 // DIAGNOSTIC AND MONITORING

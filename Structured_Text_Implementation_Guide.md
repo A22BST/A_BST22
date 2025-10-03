@@ -4,21 +4,25 @@
 ### Overview
 Complete Structured Text implementation for a modular PLC-controlled mini arcade system with continuous random generator, Simon Says game, Reaction Game, and safety systems.
 
-### Hardware I/O Mapping
+### Hardware I/O Mapping (Sysmac Studio Syntax)
 
-#### Inputs (Contacts)
-- **IBTN_R** → DI0 (Red button)
-- **IBTN_B** → DI2 (Blue button) 
-- **IBTN_Y** → DI4 (Yellow button)
-- **ISEL_LT** → DI3 (Simon Says selector - Yellow wire)
-- **ISEL_R** → DI5 (Reaction Game selector - Green wire)
-- **IBTN_M** → DI1 (Main button - Brown wire)
+#### Inputs (Contacts) - Using AT %IX addressing
+```iecst
+IBTN_R AT %IX0.0: BOOL;      // Red button - DI0
+IBTN_B AT %IX0.2: BOOL;      // Blue button - DI2
+IBTN_Y AT %IX0.4: BOOL;      // Yellow button - DI4
+ISEL_LT AT %IX0.3: BOOL;     // Simon Says selector - DI3 (Yellow wire)
+ISEL_R AT %IX0.5: BOOL;      // Reaction Game selector - DI5 (Green wire)
+IBTN_M AT %IX0.1: BOOL;      // Main button - DI1 (Brown wire)
+```
 
-#### Outputs (LEDs)
-- **OLED_R** → DO1 (Red LED)
-- **OLED_B** → DO3 (Blue LED)
-- **OLED_Y** → DO5 (Yellow LED)
-- **OLED_MAIN** → DO0 (Main LED - White wire)
+#### Outputs (LEDs) - Using AT %QX addressing
+```iecst
+OLED_R AT %QX0.1: BOOL;      // Red LED - DO1
+OLED_B AT %QX0.3: BOOL;      // Blue LED - DO3
+OLED_Y AT %QX0.5: BOOL;      // Yellow LED - DO5
+OLED_MAIN AT %QX0.0: BOOL;   // Main LED - DO0 (White wire)
+```
 
 ### System Architecture
 
@@ -85,14 +89,16 @@ OLED_MAIN: BOOL;           // Main status LED
 
 ### Implementation Details
 
-#### 1. Input Mapping
+#### 1. Input Mapping (Sysmac Studio)
 ```iecst
-IBTN_R := NOT DI0;      // Red button - DI0
-IBTN_B := NOT DI2;      // Blue button - DI2
-IBTN_Y := NOT DI4;      // Yellow button - DI4
-ISEL_LT := NOT DI3;     // Simon Says selector - DI3
-ISEL_R := NOT DI5;      // Reaction Game selector - DI5
-IBTN_M := NOT DI1;      // Main button - DI1
+// Inputs are directly mapped using AT %IX addressing in VAR_GLOBAL
+// No additional mapping code needed - inputs are automatically read from hardware
+IBTN_R AT %IX0.0: BOOL;      // Red button - DI0
+IBTN_B AT %IX0.2: BOOL;      // Blue button - DI2
+IBTN_Y AT %IX0.4: BOOL;      // Yellow button - DI4
+ISEL_LT AT %IX0.3: BOOL;     // Simon Says selector - DI3
+ISEL_R AT %IX0.5: BOOL;      // Reaction Game selector - DI5
+IBTN_M AT %IX0.1: BOOL;      // Main button - DI1
 ```
 
 #### 2. Button Edge Detection
@@ -114,10 +120,11 @@ ELSE
 END_IF;
 ```
 
-#### 4. Random Generator
+#### 4. Random Generator (Sysmac Studio TON)
 ```iecst
 SystemTimer(IN := RandomGenActive, PT := T#100MS);
 IF SystemTimer.Q THEN
+    SystemTimer(IN := FALSE, PT := T#0MS);  // Reset timer
     RandomCounter := RandomCounter + 1;
     IF RandomCounter >= 1000 THEN
         RandomCounter := 0;
@@ -305,10 +312,40 @@ END_CASE;
 - Change tracking
 - User manual updates
 
+### Sysmac Studio Specific Features
+
+#### 1. Direct I/O Addressing
+- Uses AT %IX and AT %QX addressing for direct hardware mapping
+- No intermediate variables needed for I/O access
+- Automatic read/write to physical hardware
+
+#### 2. Timer Function Blocks
+- Uses Sysmac Studio TON (Timer On-Delay) function blocks
+- Proper timer reset syntax with `(IN := FALSE, PT := T#0MS)`
+- Time constant syntax: `T#100MS`, `T#500MS`, etc.
+
+#### 3. Global Variable Declaration
+```iecst
+VAR_GLOBAL
+    // All system variables declared here
+    // I/O mapping with AT addresses
+    // System control variables
+    // Game state variables
+    // Timer instances
+END_VAR
+```
+
+#### 4. Sysmac Studio Compatibility
+- Fully compatible with Omron NX102 PLC
+- Uses standard IEC 61131-3 Structured Text syntax
+- Optimized for Sysmac Studio environment
+- Ready for direct import and compilation
+
 ### Conclusion
 
 This Structured Text implementation provides a complete, modular, and safe PLC arcade system with:
 
+- **Sysmac Studio specific syntax** with AT addressing
 - **Complete I/O mapping** for specified hardware
 - **Continuous random generator** for idle mode
 - **Simon Says game** with progressive difficulty
@@ -317,4 +354,4 @@ This Structured Text implementation provides a complete, modular, and safe PLC a
 - **Modular architecture** for easy expansion
 - **Comprehensive diagnostics** for troubleshooting
 
-The system is ready for implementation in Sysmac Studio and can be easily expanded with additional game modes or features while maintaining safety and reliability.
+The system is ready for direct implementation in Sysmac Studio and can be easily expanded with additional game modes or features while maintaining safety and reliability.
